@@ -397,6 +397,49 @@ local function tests()
   print('PASS: failed :e reports an error and allows retry')
   print('PASS: rename paths, literal filenames, and live working-copy diffs')
 
+  local before_write = lines()
+  vim.cmd.split(vim.fn.fnameescape(paths_repo .. '/' .. unusual))
+  local file_win = vim.api.nvim_get_current_win()
+  vim.api.nvim_buf_set_lines(0, 0, -1, false, { 'saved in vim' })
+  vim.cmd.write()
+  vim.api.nvim_buf_set_lines(0, 0, -1, false, { 'saved twice in vim' })
+  vim.cmd.write()
+  eq(file_win, vim.api.nvim_get_current_win())
+  eq(before_write, vim.api.nvim_buf_get_lines(reload_buf, 0, -1, false))
+  vim.api.nvim_set_current_win(reload_win)
+  assert(find('+saved twice in vim'), 'entering a stale log refreshes its expanded diff')
+  eq(nil, find('+updated contents'))
+  local tick = vim.api.nvim_buf_get_changedtick(reload_buf)
+  vim.api.nvim_set_current_win(file_win)
+  vim.api.nvim_set_current_win(reload_win)
+  eq(tick, vim.api.nvim_buf_get_changedtick(reload_buf))
+
+  vim.api.nvim_set_current_win(file_win)
+  edit(b)
+  vim.api.nvim_buf_set_lines(0, 0, -1, false, { 'unrelated repository write' })
+  vim.cmd.write()
+  vim.api.nvim_set_current_win(reload_win)
+  eq(tick, vim.api.nvim_buf_get_changedtick(reload_buf))
+
+  vim.api.nvim_set_current_win(file_win)
+  vim.cmd.edit(vim.fn.fnameescape(paths_repo .. '/' .. unusual))
+  vim.api.nvim_buf_set_lines(0, 0, -1, false, { 'retry automatic refresh' })
+  vim.cmd.write()
+  run({ 'jj', 'config', 'set', '--repo', 'templates.log', 'invalid_template(' }, paths_repo)
+  reload_errors = {}
+  vim.notify = function(message, level)
+    reload_errors[#reload_errors + 1] = { message, level }
+  end
+  vim.api.nvim_set_current_win(reload_win)
+  vim.notify = notify_reload
+  eq(1, #reload_errors)
+  eq(vim.log.levels.ERROR, reload_errors[1][2])
+  run({ 'jj', 'config', 'unset', '--repo', 'templates.log' }, paths_repo)
+  vim.api.nvim_set_current_win(file_win)
+  vim.api.nvim_set_current_win(reload_win)
+  assert(find('+retry automatic refresh'), 'failed automatic refresh remains stale for retry')
+  print('PASS: writes invalidate only their repository; log entry refreshes lazily and retries errors')
+
   local context_repo = repo('hunk-context')
   local source = { 'local function first()' }
   for _ = 2, 11 do source[#source + 1] = '  unchanged()' end

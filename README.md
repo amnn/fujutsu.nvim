@@ -24,6 +24,9 @@ vim.opt.runtimepath:prepend('/path/to/fujutsu.nvim')
   and focuses that window instead. Logs for other repositories remain open.
 - `:tab J` opens the log in a new tab, even if the current tab already shows it.
 - `:e` (or `:e!`) refreshes the current log buffer in place.
+- Saving a file in Neovim marks logs for that workspace stale. Each refreshes
+  when you enter it, preserving expansion choices; a visible log split does not
+  refresh immediately on save. Changes outside Neovim still require `:e` or `:J`.
 - Press `=` on a revision's header, description, or total to toggle its file
   stats. Only the working-copy revision (`@`) is expanded initially.
 - Press `=` on a file row to toggle its inline diff underneath it. Diffs start

@@ -23,6 +23,42 @@ local function current_directory()
 end
 
 local logs = {}
+local stale = {}
+
+local function refresh(buf)
+  logs[buf].refresh(buf)
+  stale[buf] = nil
+end
+
+local function try_refresh(buf)
+  local success, message = pcall(refresh, buf)
+  if not success then vim.notify(message, vim.log.levels.ERROR) end
+end
+
+local group = vim.api.nvim_create_augroup('fujutsu_reload', { clear = true })
+vim.api.nvim_create_autocmd('BufWritePost', {
+  group = group,
+  callback = function(event)
+    if not next(logs) or vim.bo[event.buf].buftype ~= '' then return end
+    local name = vim.api.nvim_buf_get_name(event.buf)
+    if name == '' then return end
+    local ok, root = pcall(jj, vim.fs.dirname(name), { 'root' })
+    if not ok then return end -- Files outside a jj workspace are irrelevant.
+    root = vim.trim(root)
+    root = vim.uv.fs_realpath(root) or root
+    for buf in pairs(logs) do
+      if vim.b[buf].fujutsu_repo == root then stale[buf] = true end
+    end
+  end,
+})
+vim.api.nvim_create_autocmd('BufEnter', {
+  group = group,
+  callback = function(event)
+    if stale[event.buf] and not vim.bo[event.buf].modified then
+      try_refresh(event.buf)
+    end
+  end,
+})
 
 function M.open(opts)
   opts = opts or {}
@@ -36,7 +72,7 @@ function M.open(opts)
     for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
       local buf = vim.api.nvim_win_get_buf(win)
       if vim.b[buf].fujutsu_repo == root then
-        logs[buf].refresh(buf)
+        refresh(buf)
         vim.api.nvim_set_current_win(win)
         return
       end
@@ -58,14 +94,16 @@ function M.open(opts)
   vim.api.nvim_create_autocmd('BufReadCmd', {
     buffer = buf,
     callback = function()
-      local success, message = pcall(log.refresh, buf)
-      if not success then vim.notify(message, vim.log.levels.ERROR) end
+      try_refresh(buf)
     end,
   })
   vim.api.nvim_create_autocmd('BufWipeout', {
     buffer = buf,
     once = true,
-    callback = function() logs[buf] = nil end,
+    callback = function()
+      logs[buf] = nil
+      stale[buf] = nil
+    end,
   })
   vim.keymap.set('n', '=', function()
     local success, message = pcall(log.toggle, buf)
