@@ -64,6 +64,67 @@ local function tests()
   vim.api.nvim_buf_delete(buf, { force = true })
   print('PASS: ANSI styles, resets, byte offsets, and refresh cleanup')
 
+  local highlights = require('fujutsu.highlights')
+  local function hl(name) return vim.api.nvim_get_hl(0, { name = name, link = false }) end
+  local palette_buf = vim.api.nvim_create_buf(false, true)
+  local old_red, old_green = vim.g.terminal_color_1, vim.g.terminal_color_2
+  vim.g.terminal_color_1, vim.g.terminal_color_2 = '#123456', '#654321'
+  ansi.render(palette_buf, '\27[31mred\27[32mgreen\27[0m')
+  eq(0x123456, highlight(marks(palette_buf)[1]).fg)
+  eq(0x654321, highlight(marks(palette_buf)[2]).fg)
+  highlights.refresh()
+  for _, background in ipairs({ 'light', 'dark' }) do
+    vim.o.background = background
+    for kind, base in pairs({ Add = 'Added', Delete = 'Removed', Change = 'Changed', Neutral = 'Comment' }) do
+      vim.api.nvim_set_hl(0, base, { fg = '#123456', bg = '#abcdef', ctermfg = 2, ctermbg = 1,
+        reverse = true, bold = true })
+      vim.api.nvim_exec_autocmds('ColorScheme', { pattern = 'fujutsu-test' })
+      eq({ fg = 0x123456, ctermfg = 2 }, hl('FujutsuStat' .. kind))
+      vim.api.nvim_set_hl(0, base, { fg = '#654321', bg = '#fedcba', ctermfg = 3, ctermbg = 4 })
+      vim.api.nvim_exec_autocmds('ColorScheme', { pattern = 'fujutsu-test' })
+      eq({ fg = 0x654321, ctermfg = 3 }, hl('FujutsuStat' .. kind))
+    end
+  end
+  vim.api.nvim_set_hl(0, 'FujutsuStatAdd', { fg = '#abcdef' })
+  for _, background in ipairs({ 'light', 'dark' }) do
+    vim.o.background = background
+    vim.api.nvim_set_hl(0, 'Normal', {})
+    vim.api.nvim_set_hl(0, 'FujutsuDiffAdd', { bg = '#204060' })
+    highlights.refresh()
+    eq(background == 'dark' and 0x8f9faf or 0x102030, hl('FujutsuDiffAddUnchanged').fg)
+    vim.api.nvim_set_hl(0, 'Normal', { fg = '#102030', bg = '#304050' })
+    vim.api.nvim_set_hl(0, 'FujutsuTestEmpty', {})
+    vim.api.nvim_set_hl(0, 'FujutsuDiffAdd', { link = 'FujutsuTestEmpty' })
+    highlights.refresh()
+    eq(0x203040, hl('FujutsuDiffAddUnchanged').fg)
+    vim.api.nvim_set_hl(0, 'FujutsuDiffAdd', { fg = '#204060', bg = '#a0c0e0' })
+    vim.api.nvim_set_hl(0, 'FujutsuDiffDelete', { fg = '#e0c0a0', bg = '#604020' })
+    highlights.refresh()
+    eq(0x6080a0, hl('FujutsuDiffAddUnchanged').fg)
+    eq(0xa08060, hl('FujutsuDiffDeleteUnchanged').fg)
+    eq(nil, hl('FujutsuDiffAddUnchanged').bg)
+    eq(8, hl('FujutsuDiffAddUnchanged').ctermfg)
+    -- Changing effective base colors must update previously generated defaults.
+    vim.api.nvim_set_hl(0, 'FujutsuDiffAdd', { fg = '#ffffff', bg = '#000000' })
+    vim.g.terminal_color_1, vim.g.terminal_color_2 = '#112233', '#445566'
+    vim.api.nvim_exec_autocmds('ColorScheme', { pattern = 'fujutsu-test' })
+    eq(0x7f7f7f, hl('FujutsuDiffAddUnchanged').fg)
+    eq(0xabcdef, hl('FujutsuStatAdd').fg)
+    eq(0x112233, highlight(marks(palette_buf)[1]).fg)
+    eq(0x445566, highlight(marks(palette_buf)[2]).fg)
+  end
+  vim.api.nvim_set_hl(0, 'FujutsuDiffAddUnchanged', { fg = '#fedcba' })
+  highlights.refresh()
+  vim.api.nvim_exec_autocmds('ColorScheme', { pattern = 'fujutsu-test' })
+  eq(0xfedcba, hl('FujutsuDiffAddUnchanged').fg)
+  vim.g.terminal_color_1, vim.g.terminal_color_2 = old_red, old_green
+  vim.cmd.colorscheme('default')
+  eq(hl('Added').fg, hl('FujutsuStatAdd').fg)
+  eq(nil, hl('FujutsuStatAdd').bg)
+  assert(hl('FujutsuDiffAddUnchanged').fg)
+  vim.api.nvim_buf_delete(palette_buf, { force = true })
+  print('PASS: semantic defaults, palette overrides, light/dark dimming, and colorscheme refresh')
+
   local word_spans = require('fujutsu.diff').word_spans
   eq({
     { 2, 2, 5, 'FujutsuDiffDeleteUnchanged' }, { 3, 2, 5, 'FujutsuDiffAddUnchanged' },
@@ -175,8 +236,17 @@ local function tests()
   assert(find('binary.dat'), 'binary changes must remain visible')
   local stat_marks = vim.api.nvim_buf_get_extmarks(0, ansi.namespace, { row - 1, 0 }, { row - 1, -1 }, { details = true })
   local colors = {}
-  for _, mark in ipairs(stat_marks) do colors[highlight(mark).ctermfg or -1] = true end
-  assert(colors[1] and colors[2] and colors[8], 'stats need red, green, and neutral highlights')
+  for _, mark in ipairs(stat_marks) do
+    local name = mark[4].hl_group
+    colors[name] = true
+    if name:match('^FujutsuStat') then
+      local chunk = line:sub(mark[3] + 1, mark[4].end_col)
+      assert(not chunk:find('│', 1, true), 'stat highlights must not cover the graph')
+      assert(not chunk:find('file.txt', 1, true), 'stat highlights must not cover filenames')
+    end
+  end
+  assert(colors.FujutsuStatAdd and colors.FujutsuStatDelete and colors.FujutsuStatNeutral,
+    'stats need semantic addition, deletion, and neutral highlights')
   local collapsed = lines()
   toggle(row, #line - 1)
   eq(row, vim.api.nvim_win_get_cursor(0)[1])

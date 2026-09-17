@@ -76,6 +76,19 @@ local function sgr(style, parameters)
   return style
 end
 
+local definitions = {}
+
+-- Existing extmarks keep their group names across colorscheme changes.
+function M.refresh()
+  for name, original in pairs(definitions) do
+    local style = vim.deepcopy(original)
+    for _, key in ipairs({ 'fg', 'bg' }) do
+      if style['cterm' .. key] then style[key] = color(style['cterm' .. key]) end
+    end
+    vim.api.nvim_set_hl(0, name, style)
+  end
+end
+
 function M.render(buf, text)
   local lines, spans, style = {}, {}, {}
   local groups = {}
@@ -88,6 +101,7 @@ function M.render(buf, text)
     local name = 'FujutsuAnsi_' .. table.concat(parts, '_')
     if not groups[name] then
       vim.api.nvim_set_hl(0, name, style)
+      definitions[name] = vim.deepcopy(style)
       groups[name] = true
     end
     return name

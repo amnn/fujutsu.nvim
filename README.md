@@ -36,7 +36,7 @@ vim.opt.runtimepath:prepend('/path/to/fujutsu.nvim')
   a diff collapses it. Expansion choices survive `:J` refreshes in that buffer.
 - Stats blocks have graph-preserving blank lines on either side and a total
   header. File rows show an `A`/`M`/`D` status (also `R`/`C` for renames/copies),
-  five boxes, right-aligned green `+` / red `-` line counts, then the filename.
+  five boxes, right-aligned addition `+` / deletion `-` line counts, then the filename.
   The header shows five boxes and counts for the whole change. Boxes show the
   proportion of added and removed lines, with unused boxes gray for small diffs.
   Zero counts are omitted; binary and empty-file changes remain visible.
@@ -50,6 +50,43 @@ The view uses your configured `jj log` defaults, preserving ANSI colors and styl
 as Neovim highlights, with paging and log word wrapping disabled. The first 16 colors use
 `g:terminal_color_0` through `g:terminal_color_15` when set.
 Commands run synchronously; large repositories may briefly block the editor.
+
+## Colors
+
+Plugin-owned stats use theme highlights rather than the terminal ANSI palette:
+
+| Highlight | Color source | Used for |
+| --- | --- | --- |
+| `FujutsuStatAdd` | `Added` | Added boxes, `+` counts, `A` status |
+| `FujutsuStatDelete` | `Removed` | Removed boxes, `-` counts, `D` status |
+| `FujutsuStatChange` | `Changed` | Other status letters |
+| `FujutsuStatNeutral` | `Comment` | Unused boxes |
+| `FujutsuDiffAdd` | `DiffAdd` | Added diff lines |
+| `FujutsuDiffDelete` | `DiffDelete` | Removed diff lines |
+
+Addition/deletion colors are usually green/red, but follow your theme. Stats copy
+only the source group's GUI and terminal foregrounds, never its background or
+reverse-video styling. These foreground-only defaults are regenerated on
+`ColorScheme` and `:J` refresh. Inline diff groups link to their sources and retain
+the theme's diff backgrounds.
+The log and graph separately preserve `jj`'s configured ANSI colors.
+
+Override any group with `vim.api.nvim_set_hl`, for example:
+
+```lua
+vim.api.nvim_set_hl(0, 'FujutsuStatAdd', { fg = '#80c080' })
+vim.api.nvim_set_hl(0, 'FujutsuStatDelete', { fg = '#e08080' })
+```
+
+`FujutsuDiffAddUnchanged` and `FujutsuDiffDeleteUnchanged` default to a foreground
+halfway between the effective corresponding `FujutsuDiff*` foreground and
+background, falling back to `Normal`. They keep the diff background intact.
+Without true color, both use terminal color 8. These groups can also be overridden.
+
+Derived colors update on `:J` refresh and `ColorScheme`; existing log ANSI
+highlights also update on `ColorScheme`. Explicit plugin-group overrides are
+preserved unless the colorscheme clears them. To keep overrides across theme
+changes, reapply them in your own `ColorScheme` autocmd.
 
 ## Tests
 

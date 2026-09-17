@@ -7,10 +7,6 @@ local function plain(text)
   return (text:gsub('\27%[[%d;]*m', ''))
 end
 
-local function color(code, text)
-  return '\27[' .. code .. 'm' .. text .. '\27[0m'
-end
-
 local function parse_stat(text)
   local status, added, removed, path, target = plain(text):match('^STAT\t([%u ])\t(%d+)\t(%d+)\t(.*)\t(.*)$')
   if not status then return end
@@ -18,9 +14,9 @@ local function parse_stat(text)
     path = vim.json.decode(path), target = vim.json.decode(target) }
 end
 
-local function count(value, sign, code, width)
+local function count(value, sign, width)
   local text = value == 0 and '' or sign .. value
-  return string.rep(' ', width - #text) .. color(code, text)
+  return string.rep(' ', width - #text) .. text
 end
 
 local function stat(file, widths)
@@ -33,13 +29,24 @@ local function stat(file, widths)
   if added > 0 and removed > 0 and used > 1 then
     green = math.max(1, math.min(used - 1, green))
   end
-  local boxes = color('32', string.rep('■', green))
-    .. color('31', string.rep('■', used - green))
-    .. color('90', string.rep('■', 5 - used))
-  local code = status == 'A' and '32' or status == 'D' and '31' or '33'
-  return color(code, status) .. ' ' .. boxes
-    .. ' ' .. count(added, '+', '32', widths.added)
-    .. ' ' .. count(removed, '-', '31', widths.removed) .. (path == '' and '' or ' ' .. path)
+  local text, spans = '', {}
+  local function append(chunk, kind)
+    if kind and #chunk > 0 then
+      spans[#spans + 1] = { #text, #text + #chunk, 'FujutsuStat' .. kind }
+    end
+    text = text .. chunk
+  end
+  append(status, status == 'A' and 'Add' or status == 'D' and 'Delete' or 'Change')
+  append(' ')
+  append(string.rep('■', green), 'Add')
+  append(string.rep('■', used - green), 'Delete')
+  append(string.rep('■', 5 - used), 'Neutral')
+  append(' ')
+  append(count(added, '+', widths.added), 'Add')
+  append(' ')
+  append(count(removed, '-', widths.removed), 'Delete')
+  append(path == '' and '' or ' ' .. path)
+  return text, spans
 end
 
 function M.new(root, jj)
@@ -116,6 +123,7 @@ function M.new(root, jj)
     local margin = false
     for line in (output:gsub('\n$', '') .. '\n'):gmatch('(.-)\n') do
       local skip, row, patch, group, hunk_length = false, nil, nil, nil, nil
+      local stat_text, stat_spans
       local previous_margin = margin
       margin = false
       line = line:gsub('\30(.-)\31', function(marker)
@@ -173,7 +181,8 @@ function M.new(root, jj)
             file_row = { entry = entry, path = file.target, first = #lines + 1 }
             row = file_row
           end
-          return stat(file, entry.widths)
+          stat_text, stat_spans = stat(file, entry.widths)
+          return stat_text
         end
         return ''
       end)
@@ -181,6 +190,12 @@ function M.new(root, jj)
       if not skip then
         lines[#lines + 1] = line
         rows[#lines] = row or diff_row or entry
+        if stat_spans then
+          local first = #plain(line) - #stat_text
+          for _, span in ipairs(stat_spans) do
+            highlights[#highlights + 1] = { #lines - 1, first + span[1], first + span[2], span[3] }
+          end
+        end
         if group then
           local length = #plain(line)
           local first = length - #patch
@@ -197,32 +212,11 @@ function M.new(root, jj)
     end
     flush_words()
     render(buf, table.concat(lines, '\n') .. '\n')
-    for name, link in pairs({
-      diffLine = 'Statement', diffSubname = 'PreProc',
-      FujutsuDiffAdd = 'DiffAdd', FujutsuDiffDelete = 'DiffDelete',
-      FujutsuDiffHunk = 'diffLine', FujutsuDiffContext = 'diffSubname',
-    }) do
-      vim.api.nvim_set_hl(0, name, { default = true, link = link })
-    end
+    require('fujutsu.highlights').refresh()
     for _, span in ipairs(highlights) do
       vim.api.nvim_buf_set_extmark(buf, ansi.namespace, span[1], span[2], {
         end_col = span[3], hl_group = span[4], priority = 110,
       })
-    end
-    local normal = vim.api.nvim_get_hl(0, { name = 'Normal', link = false })
-    for name, base in pairs({ FujutsuDiffAddUnchanged = 'DiffAdd', FujutsuDiffDeleteUnchanged = 'DiffDelete' }) do
-      local style = vim.api.nvim_get_hl(0, { name = base, link = false })
-      local dark = vim.o.background == 'dark'
-      local fg = style.fg or normal.fg or (dark and 0xffffff or 0x000000)
-      local bg = style.bg or normal.bg or (dark and 0x000000 or 0xffffff)
-      local dimmed = 0
-      for _, shift in ipairs({ 0, 8, 16 }) do
-        local scale = 2 ^ shift
-        local front, back = math.floor(fg / scale) % 256, math.floor(bg / scale) % 256
-        dimmed = dimmed + math.floor((front + back) / 2) * scale
-      end
-      -- Only the foreground changes; the underlying diff background survives.
-      vim.api.nvim_set_hl(0, name, { default = true, fg = dimmed, ctermfg = 8 })
     end
     for _, span in ipairs(words) do
       vim.api.nvim_buf_set_extmark(buf, ansi.namespace, span[1], span[2], {
