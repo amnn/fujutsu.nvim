@@ -120,6 +120,83 @@ local function tests()
   eq(a, vim.b.fujutsu_repo)
   print('PASS: unnamed buffers use the current directory')
 
+  local stats_repo = repo('stats-parent')
+  vim.fn.writefile({ 'remove me' }, stats_repo .. '/removed.txt')
+  run({ 'jj', 'new', '-m', 'stats-child' }, stats_repo)
+  vim.fn.writefile({ 'replacement', 'extra' }, stats_repo .. '/file.txt')
+  vim.fn.delete(stats_repo .. '/removed.txt')
+  vim.fn.writefile({ 'new' }, stats_repo .. '/space name.txt')
+  vim.fn.writefile({}, stats_repo .. '/empty.txt')
+  vim.fn.writefile(vim.fn['repeat']({ 'line' }, 12), stats_repo .. '/large.txt')
+  vim.fn.writefile({ 'binary\ncontent' }, stats_repo .. '/binary.dat', 'b')
+  vim.cmd.tabnew()
+  edit(stats_repo)
+  vim.cmd.J()
+  local function lines()
+    return vim.api.nvim_buf_get_lines(0, 0, -1, false)
+  end
+  local function find(needle)
+    for row, line in ipairs(lines()) do
+      if line:find(needle, 1, true) then return row, line end
+    end
+  end
+  local function toggle(row, col)
+    vim.api.nvim_win_set_cursor(0, { row, col or 0 })
+    vim.cmd('normal =')
+  end
+  local row, line = find('file.txt')
+  assert(line:find('M ■■■■■', 1, true), line) -- Three used boxes, two neutral.
+  assert(line:find('M ■■■■■  +2 -1 file.txt', 1, true), line)
+  assert(select(2, find('removed.txt')):find('D ■■■■■     -1 removed.txt', 1, true))
+  assert(select(2, find('space name.txt')):find('A ■■■■■  +1    space name.txt', 1, true))
+  assert(select(2, find('empty.txt')):find('A ■■■■■        empty.txt', 1, true))
+  assert(select(2, find('large.txt')):find('A ■■■■■ +12    large.txt', 1, true))
+  local header, total = find('  ■■■■■ +15 -2')
+  assert(total:match('  ■■■■■ %+15 %-2$'), total)
+  eq(nil, find('Total'))
+  eq('', (lines()[header - 1]:gsub('│', ''):gsub('%s', '')))
+  eq('', (lines()[find('space name.txt') + 1]:gsub('│', ''):gsub('%s', '')))
+  for index = header, find('space name.txt') do
+    assert(not lines()[index]:find('[+-]0'), 'zero counts must be omitted')
+  end
+  assert(find('binary.dat'), 'binary changes must remain visible')
+  local stat_marks = vim.api.nvim_buf_get_extmarks(0, ansi.namespace, { row - 1, 0 }, { row - 1, -1 }, { details = true })
+  local colors = {}
+  for _, mark in ipairs(stat_marks) do colors[highlight(mark).ctermfg or -1] = true end
+  assert(colors[1] and colors[2] and colors[8], 'stats need red, green, and neutral highlights')
+  toggle(row, #line - 1) -- File rows belong to their revision too.
+  eq(nil, find('file.txt'))
+  vim.cmd.J()
+  eq(nil, find('file.txt')) -- Refresh preserves an explicit collapse of @.
+  toggle(find('stats-child'), 4) -- Description, not just the graph/header.
+  assert(find('file.txt'))
+  toggle((find('stats-child')))
+  toggle((find('stats-parent')))
+  assert(select(2, find('file.txt')):find('+1  file.txt', 1, true))
+  eq(nil, find('space name.txt')) -- Expanding the parent doesn't expand @.
+  local parent_stat = select(2, find('file.txt'))
+  toggle((find('stats-child')))
+  assert(select(2, find('file.txt')):find('M ■■■■■  +2 -1 file.txt', 1, true))
+  local parent_unchanged = false
+  for _, text_line in ipairs(lines()) do
+    if text_line == parent_stat then parent_unchanged = true end
+  end
+  assert(parent_unchanged, 'another expanded commit must not widen the parent counts')
+  toggle((find('stats-child')))
+  toggle((find('  ■■■■■ +2'))) -- The unlabeled summary belongs to the entry too.
+  eq(nil, find('file.txt'))
+  eq(false, vim.bo.modifiable)
+  print('PASS: default @ stats, A/M/D counts and colors, entry-wide toggles, refresh state')
+
+  run({ 'jj', 'config', 'set', '--repo', 'templates.log',
+    'commit_id.short() ++ " custom header\\nsecond line\\n" ++ description.remove_suffix("\\n")' }, stats_repo)
+  vim.cmd.J()
+  toggle(find('custom header'), 5)
+  assert(find('space name.txt'))
+  toggle((find('second line')))
+  eq(nil, find('space name.txt'))
+  print('PASS: custom multiline templates preserve revision ownership')
+
   vim.cmd.tabnew()
   vim.cmd.cd(vim.fn.fnameescape(tmp))
   local notifications = {}
