@@ -64,6 +64,19 @@ local function tests()
   vim.api.nvim_buf_delete(buf, { force = true })
   print('PASS: ANSI styles, resets, byte offsets, and refresh cleanup')
 
+  local word_spans = require('fujutsu.diff').word_spans
+  eq({
+    { 2, 2, 5, 'FujutsuDiffDeleteUnchanged' }, { 3, 2, 5, 'FujutsuDiffAddUnchanged' },
+    { 2, 8, 13, 'FujutsuDiffDeleteUnchanged' }, { 3, 8, 13, 'FujutsuDiffAddUnchanged' },
+  },
+    word_spans({ { row = 2, col = 2, text = 'α old tail' } },
+      { { row = 3, col = 2, text = 'α new tail' } }))
+  eq({}, word_spans({}, { { row = 0, col = 0, text = 'added' } }))
+  eq({ { 0, 1, 10, 'FujutsuDiffDeleteUnchanged' }, { 1, 5, 14, 'FujutsuDiffAddUnchanged' } },
+    word_spans({ { row = 0, col = 1, text = 'same tail' } },
+      { { row = 1, col = 1, text = 'new same tail' } }))
+  print('PASS: unchanged-word spans, insertions, and UTF-8 byte offsets')
+
   local a, b = repo('repo-a'), repo('repo-b')
   edit(a)
   local original = vim.api.nvim_get_current_win()
@@ -164,7 +177,63 @@ local function tests()
   local colors = {}
   for _, mark in ipairs(stat_marks) do colors[highlight(mark).ctermfg or -1] = true end
   assert(colors[1] and colors[2] and colors[8], 'stats need red, green, and neutral highlights')
-  toggle(row, #line - 1) -- File rows belong to their revision too.
+  local collapsed = lines()
+  toggle(row, #line - 1)
+  eq(row, vim.api.nvim_win_get_cursor(0)[1])
+  local hunk = lines()[row + 1]
+  assert(hunk:find('@@ -1,1 +1,2 @@', 1, true), hunk)
+  eq(select(2, find('file.txt')):find('M ■', 1, true), hunk:find('@@', 1, true))
+  assert(find('+replacement'))
+  assert(find('-stats-parent'))
+  eq(nil, find('diff --git'))
+  eq(nil, find('--- a/file.txt'))
+  eq(nil, find('+++ b/file.txt'))
+  local function diff_highlight(needle, name)
+    local index, content = find(needle)
+    local found = false
+    for _, mark in ipairs(marks(vim.api.nvim_get_current_buf())) do
+      if mark[2] == index - 1 and mark[4].hl_group == name then
+        eq(content:find(needle, 1, true) - 1, mark[3])
+        eq(#content, mark[4].end_col)
+        found = true
+      end
+    end
+    assert(found, 'missing diff highlight: ' .. name)
+  end
+  diff_highlight('+replacement', 'FujutsuDiffAdd')
+  diff_highlight('-stats-parent', 'FujutsuDiffDelete')
+  diff_highlight('@@ -1,1 +1,2 @@', 'FujutsuDiffHunk')
+  local function graph_blank(text_line)
+    return text_line:gsub('│', ''):gsub('%s', '') == ''
+  end
+  local diff_end = find('+extra')
+  assert(graph_blank(lines()[diff_end + 1]), 'diff needs a trailing margin')
+  assert(not graph_blank(lines()[diff_end + 2]), 'margin must be only one line')
+  vim.cmd.J()
+  assert(find('+replacement'), 'refresh preserves expanded diffs')
+  toggle((find('+replacement'))) -- Diff rows collapse their file, not the revision.
+  eq(row, vim.api.nvim_win_get_cursor(0)[1])
+  eq(collapsed, lines())
+  toggle((find('space name.txt')))
+  assert(find('+new'))
+  local last_diff_end = find('+new')
+  assert(graph_blank(lines()[last_diff_end + 1]), 'last diff shares the status margin')
+  assert(not graph_blank(lines()[last_diff_end + 2]), 'last diff must not double the margin')
+  toggle((find('removed.txt')))
+  assert(find('-remove me'))
+  assert(find('+new'), 'files expand independently')
+  toggle((find('removed.txt')))
+  toggle((find('space name.txt')))
+  eq(collapsed, lines())
+  toggle((find('binary.dat')))
+  assert(find('Binary files'))
+  toggle((find('binary.dat')))
+  toggle((find('empty.txt')))
+  assert(find('new file mode'))
+  toggle((find('empty.txt')))
+  eq(collapsed, lines())
+  print('PASS: inline per-file diff toggles, independent state, refresh, binary and empty files')
+  toggle((find('stats-child')))
   eq(nil, find('file.txt'))
   vim.cmd.J()
   eq(nil, find('file.txt')) -- Refresh preserves an explicit collapse of @.
@@ -174,6 +243,10 @@ local function tests()
   toggle((find('stats-parent')))
   assert(select(2, find('file.txt')):find('+1  file.txt', 1, true))
   eq(nil, find('space name.txt')) -- Expanding the parent doesn't expand @.
+  toggle((find('file.txt')))
+  assert(find('+stats-parent'), 'historical files use their own revision diff')
+  eq(nil, find('+replacement'))
+  toggle((find('file.txt')))
   local parent_stat = select(2, find('file.txt'))
   toggle((find('stats-child')))
   assert(select(2, find('file.txt')):find('M ■■■■■  +2 -1 file.txt', 1, true))
@@ -196,6 +269,83 @@ local function tests()
   toggle((find('second line')))
   eq(nil, find('space name.txt'))
   print('PASS: custom multiline templates preserve revision ownership')
+
+  local paths_repo = repo('diff-paths')
+  run({ 'jj', 'new', '-m', 'renamed-file' }, paths_repo)
+  local unusual = 'glob:[name] "quoted".txt'
+  assert(vim.uv.fs_rename(paths_repo .. '/file.txt', paths_repo .. '/' .. unusual))
+  vim.cmd.tabnew()
+  vim.cmd.cd(vim.fn.fnameescape(paths_repo))
+  vim.cmd.J()
+  local renamed = assert(find('■')) + 1
+  assert(lines()[renamed]:find('R ■', 1, true), lines()[renamed])
+  toggle(renamed)
+  assert(find('rename from file.txt'), 'rename diffs use the actual target, not the display path')
+  assert(find('rename to '))
+  toggle(renamed)
+  eq(nil, find('rename from file.txt'))
+  vim.fn.writefile({ 'new contents' }, paths_repo .. '/' .. unusual)
+  toggle(renamed)
+  assert(find('+new contents'), 'literal filesets handle quotes and metacharacters')
+  vim.fn.writefile({ 'updated contents' }, paths_repo .. '/' .. unusual)
+  vim.cmd.J()
+  assert(find('+updated contents'), 'working-copy diff expansions survive snapshot changes')
+  eq(nil, find('+new contents'))
+  print('PASS: rename paths, literal filenames, and live working-copy diffs')
+
+  local context_repo = repo('hunk-context')
+  local source = { 'local function first()' }
+  for _ = 2, 11 do source[#source + 1] = '  unchanged()' end
+  source[#source + 1] = 'end'
+  source[#source + 1] = 'local function second()'
+  for _ = 14, 23 do source[#source + 1] = '  unchanged()' end
+  source[#source + 1] = 'end'
+  vim.fn.writefile(source, context_repo .. '/file.txt')
+  run({ 'jj', 'new', '-m', 'context-child' }, context_repo)
+  source[8], source[20] = '  changed_first()', '  changed_second()'
+  vim.fn.writefile(source, context_repo .. '/file.txt')
+  vim.cmd.tabnew()
+  edit(context_repo)
+  vim.cmd.J()
+  toggle((find('file.txt')))
+  local first_hunk, first_text = find('@@ -5,7 +5,7 @@ local function first()')
+  assert(first_hunk, 'first hunk needs its preceding function context')
+  assert(find('@@ -17,7 +17,7 @@ local function second()'))
+  local context_mark, header_mark
+  for _, mark in ipairs(marks(vim.api.nvim_get_current_buf())) do
+    if mark[2] == first_hunk - 1 then
+      if mark[4].hl_group == 'FujutsuDiffContext' then context_mark = mark end
+      if mark[4].hl_group == 'FujutsuDiffHunk' then header_mark = mark end
+    end
+  end
+  assert(context_mark and header_mark)
+  local dimmed_words = 0
+  for _, mark in ipairs(marks(vim.api.nvim_get_current_buf())) do
+    if mark[4].hl_group == 'FujutsuDiffAddUnchanged' or mark[4].hl_group == 'FujutsuDiffDeleteUnchanged' then
+      local style = highlight(mark)
+      assert(style.fg, 'unchanged words need a dimmed foreground')
+      eq(nil, style.bg)
+      eq(nil, style.bold)
+      dimmed_words = dimmed_words + 1
+    end
+  end
+  assert(dimmed_words > 0)
+  eq(first_text:find('local function', 1, true) - 1, context_mark[3])
+  eq(context_mark[3] - 1, header_mark[4].end_col)
+  run({ 'jj', 'new', '-m', 'context-grandchild' }, context_repo)
+  source[1] = 'local function unrelated_working_copy()'
+  vim.fn.writefile(source, context_repo .. '/file.txt')
+  vim.cmd.J()
+  toggle((find('context-child')))
+  -- Skip the working-copy file row to expand the historical file.
+  local child = find('context-child')
+  for index = child + 1, #lines() do
+    if lines()[index]:find('file.txt', 1, true) then toggle(index); break end
+  end
+  assert(find('@@ -5,7 +5,7 @@ local function first()'), 'context must come from the displayed revision')
+  toggle((find('@@ -5,7 +5,7 @@ local function first()')))
+  eq(nil, find('@@ -5,7 +5,7 @@ local function first()'))
+  print('PASS: per-hunk section context, separate highlights, and historical revision contents')
 
   vim.cmd.tabnew()
   vim.cmd.cd(vim.fn.fnameescape(tmp))

@@ -63,7 +63,7 @@ function M.open(opts)
   vim.keymap.set('n', '=', function()
     local success, message = pcall(log.toggle, buf)
     if not success then vim.notify(message, vim.log.levels.ERROR) end
-  end, { buffer = buf, silent = true, desc = 'Toggle revision file stats' })
+  end, { buffer = buf, silent = true, desc = 'Toggle revision stats or file diff' })
   local ok, err = pcall(vim.cmd, { cmd = 'sbuffer', args = { tostring(buf) }, mods = mods })
   if not ok then
     vim.api.nvim_buf_delete(buf, { force = true })
