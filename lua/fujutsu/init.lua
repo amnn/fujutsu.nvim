@@ -1,7 +1,7 @@
 local M = {}
 
-local function jj(cwd, args)
-  local command = { 'jj', '--no-pager', '--color=never' }
+local function jj(cwd, args, colored)
+  local command = { 'jj', '--no-pager', colored and '--color=always' or '--color=never' }
   vim.list_extend(command, args)
   local result = vim.system(command, { cwd = cwd, text = true }):wait()
   if result.code ~= 0 then
@@ -22,20 +22,14 @@ local function current_directory()
   return vim.fn.getcwd()
 end
 
-local function render(buf, log)
-  local lines = vim.split(log:gsub('\n$', ''), '\n', { plain = true })
-  vim.bo[buf].modifiable = true
-  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
-  vim.bo[buf].modifiable = false
-  vim.bo[buf].modified = false
-end
+local render = require('fujutsu.ansi').render
 
 function M.open(opts)
   opts = opts or {}
   local mods = opts.smods or {}
   local root = vim.trim(jj(current_directory(), { 'root' }))
   root = vim.uv.fs_realpath(root) or root
-  local log = jj(root, { 'log' })
+  local log = jj(root, { 'log' }, true)
 
   -- An explicit :tab modifier always requests a new tab, even if this tab
   -- already has a log window. Otherwise reuse only windows in this tab.

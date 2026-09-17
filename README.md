@@ -29,7 +29,9 @@ The repository is resolved from the current file's directory, or the current
 working directory for unnamed/special buffers. From a log buffer, its repository
 is reused. Logs in other tabs are never focused automatically.
 
-The view uses your configured `jj log` defaults, with colors and paging disabled.
+The view uses your configured `jj log` defaults, preserving ANSI colors and styles
+as Neovim highlights, with paging disabled. The first 16 colors use
+`g:terminal_color_0` through `g:terminal_color_15` when set.
 Commands run synchronously; large repositories may briefly block the editor.
 
 ## Tests
