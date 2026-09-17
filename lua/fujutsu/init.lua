@@ -55,6 +55,13 @@ function M.open(opts)
     error(refresh_err, 0)
   end
   logs[buf] = log
+  vim.api.nvim_create_autocmd('BufReadCmd', {
+    buffer = buf,
+    callback = function()
+      local success, message = pcall(log.refresh, buf)
+      if not success then vim.notify(message, vim.log.levels.ERROR) end
+    end,
+  })
   vim.api.nvim_create_autocmd('BufWipeout', {
     buffer = buf,
     once = true,

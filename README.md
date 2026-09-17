@@ -23,6 +23,7 @@ vim.opt.runtimepath:prepend('/path/to/fujutsu.nvim')
 - If the current tab already shows a log for the same repository, `:J` refreshes
   and focuses that window instead. Logs for other repositories remain open.
 - `:tab J` opens the log in a new tab, even if the current tab already shows it.
+- `:e` (or `:e!`) refreshes the current log buffer in place.
 - Press `=` on a revision's header, description, or total to toggle its file
   stats. Only the working-copy revision (`@`) is expanded initially.
 - Press `=` on a file row to toggle its inline diff underneath it. Diffs start
@@ -33,7 +34,7 @@ vim.opt.runtimepath:prepend('/path/to/fujutsu.nvim')
   margin follows each diff, shared with the status margin for the last file.
   Binary, rename, and mode-change metadata remain visible.
   Each file expands independently; pressing `=` inside
-  a diff collapses it. Expansion choices survive `:J` refreshes in that buffer.
+  a diff collapses it. Expansion choices survive `:J` and `:e` refreshes in that buffer.
 - Stats blocks have graph-preserving blank lines on either side and a total
   header. File rows show an `A`/`M`/`D` status (also `R`/`C` for renames/copies),
   five boxes, right-aligned addition `+` / deletion `-` line counts, then the filename.
