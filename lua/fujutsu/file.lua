@@ -18,6 +18,36 @@ function M.resolve(root, revision)
   return id, change
 end
 
+function M.visible(root, change)
+  return M.jj(root, { '--ignore-working-copy', 'log', '--no-graph', '-r',
+    'change_id(' .. change .. ') & all()', '-T', 'commit_id' })
+end
+
+function M.target(root, meta)
+  local visible = M.visible(root, meta.change)
+  if meta.target_fingerprint then
+    if visible ~= meta.target_fingerprint then error('Selected target changed; select it explicitly again', 0) end
+    return meta.id, visible
+  end
+  if #visible ~= #meta.id then error('Abandoned or divergent change; select a commit explicitly with Jedit -r', 0) end
+  return visible, visible
+end
+
+function M.new_id(root, meta)
+  local visible = M.visible(root, meta.change)
+  if #visible == #meta.id then return visible end
+  if meta.target_fingerprint then
+    local candidates = {}
+    for offset = 1, #visible, #meta.id do
+      local id = visible:sub(offset, offset + #meta.id - 1)
+      if not meta.target_fingerprint:find(id, 1, true) then candidates[#candidates + 1] = id end
+    end
+    if #candidates == 1 then return candidates[1] end
+    if #candidates == 0 and visible:find(meta.id, 1, true) then return meta.id end
+  end
+  error('Save completed but target became ambiguous; inspect jj history before retrying', 0)
+end
+
 function M.content(root, id, path)
   return M.jj(root, { '--ignore-working-copy', 'file', 'show', '-r', id, '--', 'root-file:' .. vim.json.encode(path) })
 end
@@ -50,11 +80,16 @@ end
 
 function M.open(root, id, path, opts)
   opts = opts or {}
+  local scheme = opts.description and 'fujutsu-description' or 'fujutsu'
   local name = opts.workspace and (root .. '/' .. path)
-    or ('fujutsu://%s/%s/%s'):format(root, opts.base and (id .. '-parents') or id, path)
+    or ('%s://%s/%s/%s'):format(scheme, root, opts.base and (id .. '-parents') or id, path)
+  local function load()
+    if opts.description then return M.jj(root, { '--ignore-working-copy', 'log', '--no-graph', '-r', id, '-T', 'description' }) end
+    return opts.base and M.base(root, id, path) or M.content(root, id, path)
+  end
   local content, change
   if not opts.workspace and vim.fn.bufnr(name) == -1 then
-    content = opts.base and M.base(root, id, path) or M.content(root, id, path)
+    content = load()
     local ignored
     ignored, change = M.resolve(root, id)
   end
@@ -68,14 +103,15 @@ function M.open(root, id, path, opts)
   end
   local buf = vim.api.nvim_win_get_buf(win)
   if not opts.workspace and not vim.b[buf].fujutsu_file then
-    content = content or (opts.base and M.base(root, id, path) or M.content(root, id, path))
+    content = content or load()
     if not change then local ignored; ignored, change = M.resolve(root, id) end
     vim.bo[buf].buftype = 'acwrite'
     vim.bo[buf].swapfile = false
     M.set_content(buf, content)
     vim.b[buf].fujutsu_repo = root
-    vim.b[buf].fujutsu_file = { id = id, change = change, path = path, base = opts.base, content = content }
-    vim.bo[buf].filetype = vim.filetype.match({ filename = path, buf = buf }) or ''
+    vim.b[buf].fujutsu_file = { id = id, change = change, path = path, base = opts.base,
+      description = opts.description, content = content }
+    vim.bo[buf].filetype = opts.description and 'gitcommit' or (vim.filetype.match({ filename = path, buf = buf }) or '')
     vim.bo[buf].modified = false
     vim.bo[buf].readonly = true
     vim.api.nvim_create_autocmd('BufReadCmd', { buffer = buf, callback = function()
@@ -85,6 +121,12 @@ function M.open(root, id, path, opts)
     vim.api.nvim_create_autocmd('BufWriteCmd', { buffer = buf, callback = function()
       M.write(buf, { bang = vim.v.cmdbang == 1 })
     end })
+  end
+  if opts.explicit and not opts.workspace then
+    local meta = vim.b[buf].fujutsu_file
+    local visible = M.visible(root, meta.change)
+    meta.target_fingerprint = #visible ~= #meta.id and visible or nil
+    vim.b[buf].fujutsu_file = meta
   end
   if opts.readonly ~= nil then vim.bo[buf].readonly = opts.readonly end
   vim.api.nvim_win_set_cursor(win, { math.max(1, math.min(opts.line or 1, vim.api.nvim_buf_line_count(buf))), 0 })
@@ -106,11 +148,13 @@ function M.check_write(buf, opts)
       end
     end
   end
-  local id = M.resolve(root, meta.change .. ' & all()')
+  -- Snapshot on-disk workspace changes before checking the target.
+  M.resolve(root, '@')
+  local id, fingerprint = M.target(root, meta)
   local latest = meta.description and M.jj(root, { 'log', '--no-graph', '-r', id, '-T', 'description' })
     or M.content(root, id, meta.path)
   if latest ~= meta.content and not opts.bang then error('Stale revision contents; use bang to replace the latest file', 0) end
-  return root, meta, id
+  return root, meta, id, fingerprint
 end
 
 function M.buffer_content(buf)
@@ -118,10 +162,11 @@ function M.buffer_content(buf)
 end
 
 function M.advance(buf, root, meta, content)
-  meta.id = M.resolve(root, meta.change .. ' & all()')
+  meta.id = M.new_id(root, meta)
+  if meta.target_fingerprint then meta.target_fingerprint = M.visible(root, meta.change) end
   meta.content = content
   vim.b[buf].fujutsu_file = meta
-  local name = ('fujutsu://%s/%s/%s'):format(root, meta.id, meta.path)
+  local name = ('%s://%s/%s/%s'):format(meta.description and 'fujutsu-description' or 'fujutsu', root, meta.id, meta.path)
   local existing = vim.fn.bufnr(name)
   if existing ~= -1 and existing ~= buf then name = name .. '?buffer=' .. buf end
   vim.api.nvim_buf_set_name(buf, name)
@@ -132,17 +177,42 @@ end
 
 function M.write(buf, opts)
   opts = opts or {}
-  local root, meta, id = M.check_write(buf, opts)
+  local root, meta, id, fingerprint = M.check_write(buf, opts)
   local content = M.buffer_content(buf)
   if content:find('\0', 1, true) then error('Binary revision writes are not supported', 0) end
   local dir = vim.fn.tempname()
   vim.fn.mkdir(dir, 'p')
   local payload = assert(io.open(dir .. '/content', 'wb')); payload:write(content); payload:close()
+  if meta.description then
+    if opts.restore_descendants then
+      vim.fn.delete(dir, 'rf')
+      error('--restore-descendants applies only to file writes', 0)
+    end
+    local editor = [[set -eu
+set -- "$1" "change_id($2)" "$3" "$4" "$5"
+latest=$(jj --no-pager --color=never --ignore-working-copy -R "$1" log --no-graph -r "$2 & all()" -T commit_id)
+[ "$latest" = "$3" ] || { echo 'Revision changed during save' >&2; exit 1; }
+cp -- "$4" "$5"
+latest=$(jj --no-pager --color=never --ignore-working-copy -R "$1" log --no-graph -r "$2 & all()" -T commit_id)
+[ "$latest" = "$3" ] || { echo 'Revision changed during save' >&2; exit 1; }
+]]
+    local args = { '--config', 'ui.editor=' .. vim.json.encode({ '/bin/sh', '-c', editor,
+      'fujutsu', root, meta.change, fingerprint, dir .. '/content' }), 'describe', '-r', id }
+    if opts.ignore_immutable then table.insert(args, '--ignore-immutable') end
+    local ok, err = pcall(M.jj, root, args)
+    vim.fn.delete(dir, 'rf')
+    if not ok then error(err, 0) end
+    local latest = M.new_id(root, meta)
+    content = M.jj(root, { 'log', '--no-graph', '-r', latest, '-T', 'description' })
+    M.set_content(buf, content) -- jj normalizes description whitespace.
+    M.advance(buf, root, meta, content)
+    return
+  end
   local script = [[#!/bin/sh
 set -eu
 right=$1
 root=$2
-change=$3
+change="change_id($3)"
 expected=$4
 path=$5
 payload=$6
@@ -157,7 +227,7 @@ latest=$(jj --no-pager --color=never --ignore-working-copy -R "$root" log --no-g
   vim.fn.writefile(vim.split(script, '\n', { plain = true }), dir .. '/write.sh')
   local args = { '--config', 'merge-tools.fujutsu-write.program="/bin/sh"', '--config',
     'merge-tools.fujutsu-write.edit-args=' .. vim.json.encode({ dir .. '/write.sh', '$right', root,
-      meta.change, id, meta.path, dir .. '/content' }),
+      meta.change, fingerprint, meta.path, dir .. '/content' }),
     'diffedit', '-r', id, '--tool', 'fujutsu-write' }
   if opts.restore_descendants then table.insert(args, '--restore-descendants') end
   if opts.ignore_immutable then table.insert(args, '--ignore-immutable') end

@@ -48,7 +48,7 @@ end
 function M.open(command, readonly, opts)
   local root, id, path, workspace = M.select(opts.fargs)
   return file.open(root, id, path, { workspace = workspace, command = command,
-    readonly = readonly, mods = opts.smods })
+    readonly = readonly, mods = opts.smods, explicit = not workspace })
 end
 
 function M.read(opts)

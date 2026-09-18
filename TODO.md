@@ -94,11 +94,11 @@ operations, even when the underlying jj operation is `diffedit`.
 
 ## Commit description editing
 
-- [ ] Enter on a commit itself opens its description in an editable buffer.
-- [ ] Writing the description buffer calls `jj describe` for the corresponding
+- [x] Enter on a commit itself opens its description in an editable buffer.
+- [x] Writing the description buffer calls `jj describe` for the corresponding
   change. Preserve edits on failure, update the buffer's revision identity after
   success, and invalidate affected logs.
-- [ ] Define stale-description and immutable-revision safeguards consistently
+- [x] Define stale-description and immutable-revision safeguards consistently
   with historical file writes; test navigation, saving, and failure handling.
 
 ## Summary/log navigation keybindings

@@ -250,8 +250,11 @@ function M.new(root, jj)
 
   function state.visit(buf)
     local row = state.selection(buf)
-    if not row.path then return end
     local file = require('fujutsu.file')
+    if not row.path then
+      file.open(root, row.id, 'description', { description = true, readonly = false, explicit = true })
+      return
+    end
     local old = row.old_side or row.deleted
     local id, path, base = row.entry.id, row.path, false
     if old then
@@ -264,7 +267,7 @@ function M.new(root, jj)
         '-r', 'parents(' .. id .. ')', '-T', 'commit_id ++ "\\n"' })), '\n')
       if #parents == 1 then id = parents[1] else base = true end
     end
-    file.open(root, id, path, { base = base, workspace = not old and row.entry.working_copy,
+    file.open(root, id, path, { base = base, explicit = true, workspace = not old and row.entry.working_copy,
       line = old and row.old_line or row.new_line })
   end
 

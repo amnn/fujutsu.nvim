@@ -118,7 +118,9 @@ immutability protection.
 Saves find the latest unique visible version of the same change. Description-only
 and unrelated-file rewrites are safe; a changed file requires bang, which replaces
 the latest file rather than resurrecting the opened commit. Abandoned/divergent
-changes require reopening an explicitly selected target, even with bang. Merge
+changes require reopening an explicitly selected commit (`Jedit -r <commit-id>`),
+even with bang. This records the selected branch and rechecks the visible versions
+before saving; a further external rewrite requires explicit reselection. Merge
 base views cannot be saved. Any unsaved real-file buffer in the repository blocks
 rewrites (a deliberately conservative safeguard), including bang writes. The diff
 editor rechecks revision identity before and after copying; concurrent jj
@@ -170,6 +172,18 @@ edited, while nomodifiable buffers reject reads. Save using the destination's
 normal write command and safeguards. `@` reads the snapshotted on-disk version,
 not unsaved contents in another buffer.
 
+## Commit descriptions
+
+Enter on a commit row opens its description in a writable, `gitcommit`-highlighted
+split. `:write` / `:Jwrite` call `jj describe` for the latest unique visible
+version of that change. Concurrent file-only rewrites are allowed; changed
+descriptions require bang. Readonly, abandoned/divergent changes, immutable
+revisions, and unsaved workspace buffers follow historical-write safeguards.
+Use `Jwrite! --ignore-immutable` only when explicitly intending both overrides.
+`--restore-descendants` is rejected for descriptions (trees do not change).
+Successful writes adopt jj's normalized description and new revision identity,
+clear modified, and invalidate logs; failures keep your edits.
+
 ## Tests
 
 With Neovim and jj installed, run from the checkout:
@@ -177,6 +191,7 @@ With Neovim and jj installed, run from the checkout:
 ```sh
 nvim --headless -u NONE -l tests/run.lua
 nvim --headless -u NONE -l tests/edit.lua
+nvim --headless -u NONE -l tests/safety.lua
 ```
 
 Tests create and remove temporary jj repositories; no plugin test dependencies
