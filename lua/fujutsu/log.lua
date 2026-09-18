@@ -113,7 +113,7 @@ function M.new(root, jj)
     -- Wrapping must happen in the editor, not through our metadata markers.
     local output = jj(root, { '--config', 'ui.log-word-wrap=false', 'log', '-T', template }, true)
     local lines, rows, entry = {}, {}, nil
-    local file_row, diff_row, in_hunk
+    local file_row, diff_row, in_hunk, old_line, new_line
     local highlights, words = {}, {}
     local removed, added = {}, {}
     local function flush_words()
@@ -149,6 +149,8 @@ function M.new(root, jj)
           patch = vim.json.decode(clean:sub(7))
           if patch:match('^@@') then
             in_hunk, group = true, 'FujutsuDiffHunk'
+            old_line, new_line = patch:match('^@@ %-(%d+),?%d* %+(%d+)')
+            old_line, new_line = tonumber(old_line), tonumber(new_line)
             local header, start, context = patch:match('^(@@ %-%d+,?%d* %+(%d+),?%d* @@)(.*)$')
             if header then
               hunk_length = #header
@@ -167,6 +169,15 @@ function M.new(root, jj)
           elseif patch:sub(1, 1) == '-' then
             group = 'FujutsuDiffDelete'
           end
+          if in_hunk and old_line then
+            row = vim.tbl_extend('force', {}, diff_row, {
+              old_line = old_line, new_line = new_line,
+              old_side = patch:sub(1, 1) == '-', hunk = patch:match('^@@') ~= nil,
+            })
+            local prefix = patch:sub(1, 1)
+            if prefix == '-' or prefix == ' ' then old_line = old_line + 1 end
+            if prefix == '+' or prefix == ' ' then new_line = new_line + 1 end
+          end
           return patch
         elseif clean:sub(1, 5) == 'STAT\t' then
           local file = assert(parse_stat(marker), 'Invalid Jujutsu file stats')
@@ -178,7 +189,7 @@ function M.new(root, jj)
               removed = file.removed == 0 and 0 or #tostring(file.removed) + 1,
             }
           else
-            file_row = { entry = entry, path = file.target, first = #lines + 1 }
+            file_row = { entry = entry, path = file.target, deleted = file.status == 'D', first = #lines + 1 }
             row = file_row
           end
           stat_text, stat_spans = stat(file, entry.widths)
@@ -224,6 +235,37 @@ function M.new(root, jj)
       })
     end
     state.rows = rows
+  end
+
+  function state.selection(buf)
+    local index = vim.api.nvim_win_get_cursor(0)[1]
+    local previous = state.rows[index]
+    state.refresh(buf) -- Snapshot external edits before trusting coordinates.
+    local row = state.rows[index]
+    if not previous or not row or not vim.deep_equal(previous, row) then
+      error('Log changed; select the destination again', 0)
+    end
+    return row
+  end
+
+  function state.visit(buf)
+    local row = state.selection(buf)
+    if not row.path then return end
+    local file = require('fujutsu.file')
+    local old = row.old_side or row.deleted
+    local id, path, base = row.entry.id, row.path, false
+    if old then
+      local entries = jj(root, { '--ignore-working-copy', 'diff', '-r', id, '-T',
+        'json(source.path()) ++ "\\t" ++ json(target.path()) ++ "\\n"' })
+      for source, target in entries:gmatch('([^\n]+)\t([^\n]+)\n') do
+        if vim.json.decode(target) == path then path = vim.json.decode(source); break end
+      end
+      local parents = vim.split(vim.trim(jj(root, { '--ignore-working-copy', 'log', '--no-graph',
+        '-r', 'parents(' .. id .. ')', '-T', 'commit_id ++ "\\n"' })), '\n')
+      if #parents == 1 then id = parents[1] else base = true end
+    end
+    file.open(root, id, path, { base = base, workspace = not old and row.entry.working_copy,
+      line = old and row.old_line or row.new_line })
   end
 
   function state.toggle(buf)

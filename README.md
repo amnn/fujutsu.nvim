@@ -92,12 +92,27 @@ highlights also update on `ColorScheme`. Explicit plugin-group overrides are
 preserved unless the colorscheme clears them. To keep overrides across theme
 changes, reapply them in your own `ColorScheme` autocmd.
 
+## File navigation
+
+Enter on a log file, hunk, or diff line opens a split. Added/context lines use
+new-side coordinates; removed lines and deleted files use the old path and
+parent-side coordinates. Merge old sides use jj's merged-parent tree, not its
+first parent, and have no writable revision target. Navigation refreshes the log
+first; if the selected row changed, select it again rather than trusting stale
+coordinates.
+
+Current-workspace destinations reuse normal file buffers. Historical files have
+commit-qualified `fujutsu://` names and syntax highlighting, and remain pinned.
+They are `readonly` but `modifiable` (unlike the log). Use normal `:setlocal
+noreadonly` to permit writes; there is no custom toggle mapping.
+
 ## Tests
 
 With Neovim and jj installed, run from the checkout:
 
 ```sh
 nvim --headless -u NONE -l tests/run.lua
+nvim --headless -u NONE -l tests/edit.lua
 ```
 
 Tests create and remove temporary jj repositories; no plugin test dependencies

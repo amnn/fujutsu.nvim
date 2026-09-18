@@ -71,7 +71,7 @@ function M.open(opts)
   if not (mods.tab and mods.tab >= 0) then
     for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
       local buf = vim.api.nvim_win_get_buf(win)
-      if vim.b[buf].fujutsu_repo == root then
+      if logs[buf] and vim.b[buf].fujutsu_repo == root then
         refresh(buf)
         vim.api.nvim_set_current_win(win)
         return
@@ -105,6 +105,10 @@ function M.open(opts)
       stale[buf] = nil
     end,
   })
+  vim.keymap.set('n', '<CR>', function()
+    local success, message = pcall(log.visit, buf)
+    if not success then vim.notify(message, vim.log.levels.ERROR) end
+  end, { buffer = buf, silent = true, desc = 'Visit file revision' })
   vim.keymap.set('n', '=', function()
     local success, message = pcall(log.toggle, buf)
     if not success then vim.notify(message, vim.log.levels.ERROR) end
@@ -116,6 +120,17 @@ function M.open(opts)
   end
   vim.bo[buf].filetype = 'fujutsu'
   vim.wo.wrap = false
+end
+
+function M.selection()
+  local buf = vim.api.nvim_get_current_buf()
+  return logs[buf] and logs[buf].selection(buf)
+end
+
+function M.invalidate(root)
+  for buf in pairs(logs) do
+    if vim.b[buf].fujutsu_repo == root then stale[buf] = true end
+  end
 end
 
 return M
