@@ -10,9 +10,10 @@ vim.api.nvim_create_user_command('J', function(opts)
   end
 end, { desc = 'Open the Jujutsu log' })
 
-for name, readonly in pairs({ Jedit = false, Jview = true }) do
+for name, command in pairs({ Jedit = 'edit', Jview = 'edit', Jsplit = 'split',
+  Jvsplit = 'vsplit', Jtabedit = 'tabedit', Jpedit = 'pedit', Jdrop = 'drop' }) do
   vim.api.nvim_create_user_command(name, function(opts)
-    require('fujutsu.commands').open('edit', readonly, opts)
+    require('fujutsu.commands').open(command, name == 'Jview', opts)
   end, { nargs = '*', complete = function(...)
     return require('fujutsu.commands').complete(...)
   end, desc = 'Open a workspace or historical file' })

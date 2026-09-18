@@ -60,7 +60,13 @@ function M.open(root, id, path, opts)
   end
   local command = opts.command or 'split'
   vim.cmd({ cmd = command, args = { vim.fn.fnameescape(name) }, mods = opts.mods or {} })
-  local buf = vim.api.nvim_get_current_buf()
+  local win = vim.api.nvim_get_current_win()
+  if command == 'pedit' then
+    for _, candidate in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+      if vim.wo[candidate].previewwindow then win = candidate; break end
+    end
+  end
+  local buf = vim.api.nvim_win_get_buf(win)
   if not opts.workspace and not vim.b[buf].fujutsu_file then
     content = content or (opts.base and M.base(root, id, path) or M.content(root, id, path))
     if not change then local ignored; ignored, change = M.resolve(root, id) end
@@ -81,7 +87,7 @@ function M.open(root, id, path, opts)
     end })
   end
   if opts.readonly ~= nil then vim.bo[buf].readonly = opts.readonly end
-  vim.api.nvim_win_set_cursor(0, { math.max(1, math.min(opts.line or 1, vim.api.nvim_buf_line_count(buf))), 0 })
+  vim.api.nvim_win_set_cursor(win, { math.max(1, math.min(opts.line or 1, vim.api.nvim_buf_line_count(buf))), 0 })
   return buf
 end
 

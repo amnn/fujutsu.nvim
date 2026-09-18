@@ -145,6 +145,16 @@ changing it affects every window showing that buffer. Opening does not rewrite
 history and never needs an immutability override. Use Vim's unambiguous command
 prefixes (`:Je`, `:Jw`); no extra aliases are installed.
 
+### Other opening commands
+
+`Jsplit`, `Jvsplit`, `Jtabedit`, `Jpedit`, and `Jdrop` take the same
+`[-r R] [file]` arguments and completion as `Jedit`. They use Vim's split,
+vertical split, new tab, preview window, and existing-window reuse operations,
+respectively, including command modifiers and modified-buffer safeguards.
+`Jpedit` leaves focus in the original window and reuses its preview window.
+These commands select writable buffers, including when reusing a readonly
+buffer; that option change is shared by all its windows.
+
 ## Tests
 
 With Neovim and jj installed, run from the checkout:

@@ -73,12 +73,12 @@ operations, even when the underlying jj operation is `diffedit`.
 
 ### 4. Add ancillary edit commands
 
-- [ ] Add `:Jsplit`, `:Jvsplit`, `:Jtabedit`, `:Jpedit`, and `:Jdrop`, following
+- [x] Add `:Jsplit`, `:Jvsplit`, `:Jtabedit`, `:Jpedit`, and `:Jdrop`, following
   their Vim/Fugitive counterparts for split, vertical split, tab, preview-window,
   and existing-window reuse behavior.
-- [ ] Share revision/file selection (`[-r R] [file]`), path handling, completion,
+- [x] Share revision/file selection (`[-r R] [file]`), path handling, completion,
   revision-buffer identity, and editing safeguards with `Jedit`/`Jview`.
-- [ ] Test window/tab placement, preview reuse, existing-buffer/window reuse,
+- [x] Test window/tab placement, preview reuse, existing-buffer/window reuse,
   modified buffers, and readonly interactions.
 
 ### 5. Add restorative `Jread`
