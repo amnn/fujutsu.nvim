@@ -27,31 +27,31 @@ operations, even when the underlying jj operation is `diffedit`.
 
 ### 2. Write historical files
 
-- [ ] Support `:write` and `:Jwrite` on revision buffers through `jj diffedit`,
+- [x] Support `:write` and `:Jwrite` on revision buffers through `jj diffedit`,
   saving only the current file and preserving other files in the target revision.
   Ordinary writes rewrite the revision and rebase descendants normally, without
   switching the working copy to the edited revision.
-- [ ] Support `:Jwrite --restore-descendants` to preserve descendant contents
+- [x] Support `:Jwrite --restore-descendants` to preserve descendant contents
   rather than their patches: the analogue of editing staged contents while
   leaving the working-directory tree unchanged.
-- [ ] Support `:Jwrite --ignore-immutable` as explicit permission to bypass jj's
+- [x] Support `:Jwrite --ignore-immutable` as explicit permission to bypass jj's
   immutability protection. Keep both flags unabbreviated and allow combining them.
-- [ ] Respect `readonly` for both write commands. Users can enable ordinary writes
+- [x] Respect `readonly` for both write commands. Users can enable ordinary writes
   with `:setlocal noreadonly`; `:write!` / `:Jwrite!` bypass readonly and stale-file
   protection, but never implicitly bypass immutability.
-- [ ] Detect stale files against the latest unambiguous version of the same
+- [x] Detect stale files against the latest unambiguous version of the same
   change. If only the description or other files changed, permit an ordinary
   save against the latest revision. Otherwise refuse ordinary saves and preserve
   buffer edits. Bang replaces this entire file in the latest revision with the
   buffer contents, preserving other files; it does not resurrect the old commit.
-- [ ] Require explicit target selection for abandoned or divergent changes, even
+- [x] Require explicit target selection for abandoned or divergent changes, even
   with bang. Synthetic merged-parent views remain non-writable.
-- [ ] Protect unsaved working-copy buffers that a rewrite could affect, even with
+- [x] Protect unsaved working-copy buffers that a rewrite could affect, even with
   bang. Check freshness again as part of saving to avoid concurrent overwrites.
-- [ ] After successful saves, advance the writing buffer to the new commit, clear
+- [x] After successful saves, advance the writing buffer to the new commit, clear
   its modified flag, and invalidate affected logs. Other historical buffers stay
   pinned to their original snapshots. Failed writes retain edits.
-- [ ] Consider three-way stale-buffer reconciliation later (opened/saved base,
+- [x] Consider three-way stale-buffer reconciliation later (opened/saved base,
   buffer contents, latest revision); initial stale-write refusal is sufficient.
 
 ### 3. Add `Jedit` and `Jview`

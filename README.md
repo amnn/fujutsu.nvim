@@ -106,6 +106,29 @@ commit-qualified `fujutsu://` names and syntax highlighting, and remain pinned.
 They are `readonly` but `modifiable` (unlike the log). Use normal `:setlocal
 noreadonly` to permit writes; there is no custom toggle mapping.
 
+## Writing historical files
+
+`:write` and `:Jwrite[!] [--restore-descendants] [--ignore-immutable]` save only
+this file through `jj diffedit`, without checking out the target revision.
+Ordinary writes rebase descendant patches; `--restore-descendants` instead
+preserves their trees, including working-copy contents. Both full-length flags
+can be combined. Bang bypasses readonly and stale-file checks, **not** jj's
+immutability protection.
+
+Saves find the latest unique visible version of the same change. Description-only
+and unrelated-file rewrites are safe; a changed file requires bang, which replaces
+the latest file rather than resurrecting the opened commit. Abandoned/divergent
+changes require reopening an explicitly selected target, even with bang. Merge
+base views cannot be saved. Any unsaved real-file buffer in the repository blocks
+rewrites (a deliberately conservative safeguard), including bang writes. The diff
+editor rechecks revision identity before and after copying; concurrent jj
+operations can still produce jj operation divergence and should not be run during
+saves. Symlink and binary writes are unsupported.
+
+Successful saves advance only the writing buffer, clear its modified flag, and
+invalidate logs; failures retain edits. Other historical buffers remain pinned.
+Three-way stale-buffer reconciliation is deferred.
+
 ## Tests
 
 With Neovim and jj installed, run from the checkout:

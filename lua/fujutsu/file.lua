@@ -66,10 +66,90 @@ function M.open(root, id, path, opts)
     vim.bo[buf].filetype = vim.filetype.match({ filename = path, buf = buf }) or ''
     vim.bo[buf].modified = false
     vim.bo[buf].readonly = true
+    vim.api.nvim_create_autocmd('BufWriteCmd', { buffer = buf, callback = function()
+      M.write(buf, { bang = vim.v.cmdbang == 1 })
+    end })
   end
   if opts.readonly ~= nil then vim.bo[buf].readonly = opts.readonly end
   vim.api.nvim_win_set_cursor(0, { math.max(1, math.min(opts.line or 1, vim.api.nvim_buf_line_count(buf))), 0 })
   return buf
+end
+
+function M.check_write(buf, opts)
+  if vim.bo[buf].readonly and not opts.bang then error('Buffer is readonly; use :setlocal noreadonly or bang', 0) end
+  local meta = vim.b[buf].fujutsu_file
+  assert(meta, 'Not a revision buffer')
+  if meta.base then error('Merged-parent views have no writable revision target', 0) end
+  local root = vim.b[buf].fujutsu_repo
+  for _, other in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.api.nvim_buf_is_loaded(other) and vim.bo[other].buftype == '' and vim.bo[other].modified then
+      local name = vim.api.nvim_buf_get_name(other)
+      local real = vim.uv.fs_realpath(name) or name
+      if real:sub(1, #root + 1) == root .. '/' then
+        error('Save or discard unsaved workspace buffer first: ' .. name, 0)
+      end
+    end
+  end
+  local id = M.resolve(root, meta.change .. ' & all()')
+  local latest = meta.description and M.jj(root, { 'log', '--no-graph', '-r', id, '-T', 'description' })
+    or M.content(root, id, meta.path)
+  if latest ~= meta.content and not opts.bang then error('Stale revision contents; use bang to replace the latest file', 0) end
+  return root, meta, id
+end
+
+function M.buffer_content(buf)
+  return table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), '\n') .. (vim.bo[buf].endofline and '\n' or '')
+end
+
+function M.advance(buf, root, meta, content)
+  meta.id = M.resolve(root, meta.change .. ' & all()')
+  meta.content = content
+  vim.b[buf].fujutsu_file = meta
+  local name = ('fujutsu://%s/%s/%s'):format(root, meta.id, meta.path)
+  local existing = vim.fn.bufnr(name)
+  if existing ~= -1 and existing ~= buf then name = name .. '?buffer=' .. buf end
+  vim.api.nvim_buf_set_name(buf, name)
+  vim.bo[buf].modified = false
+  require('fujutsu').invalidate(root)
+  vim.cmd('checktime')
+end
+
+function M.write(buf, opts)
+  opts = opts or {}
+  local root, meta, id = M.check_write(buf, opts)
+  local content = M.buffer_content(buf)
+  if content:find('\0', 1, true) then error('Binary revision writes are not supported', 0) end
+  local dir = vim.fn.tempname()
+  vim.fn.mkdir(dir, 'p')
+  local payload = assert(io.open(dir .. '/content', 'wb')); payload:write(content); payload:close()
+  local script = [[#!/bin/sh
+set -eu
+right=$1
+root=$2
+change=$3
+expected=$4
+path=$5
+payload=$6
+latest=$(jj --no-pager --color=never --ignore-working-copy -R "$root" log --no-graph -r "$change & all()" -T commit_id)
+[ "$latest" = "$expected" ] || { echo 'Revision changed during save' >&2; exit 1; }
+[ ! -L "$right/$path" ] || { echo 'Symlink writes are not supported' >&2; exit 1; }
+mkdir -p -- "$(dirname -- "$right/$path")"
+cp -- "$payload" "$right/$path"
+latest=$(jj --no-pager --color=never --ignore-working-copy -R "$root" log --no-graph -r "$change & all()" -T commit_id)
+[ "$latest" = "$expected" ] || { echo 'Revision changed during save' >&2; exit 1; }
+]]
+  vim.fn.writefile(vim.split(script, '\n', { plain = true }), dir .. '/write.sh')
+  local args = { '--config', 'merge-tools.fujutsu-write.program="/bin/sh"', '--config',
+    'merge-tools.fujutsu-write.edit-args=' .. vim.json.encode({ dir .. '/write.sh', '$right', root,
+      meta.change, id, meta.path, dir .. '/content' }),
+    'diffedit', '-r', id, '--tool', 'fujutsu-write' }
+  if opts.restore_descendants then table.insert(args, '--restore-descendants') end
+  if opts.ignore_immutable then table.insert(args, '--ignore-immutable') end
+  vim.list_extend(args, { '--', 'root-file:' .. vim.json.encode(meta.path) })
+  local ok, err = pcall(M.jj, root, args)
+  vim.fn.delete(dir, 'rf')
+  if not ok then error(err, 0) end
+  M.advance(buf, root, meta, content)
 end
 
 return M

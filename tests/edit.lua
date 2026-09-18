@@ -3,6 +3,7 @@ vim.cmd.runtime('plugin/fujutsu.lua')
 local file = require('fujutsu.file')
 local root = vim.fn.tempname()
 vim.fn.mkdir(root, 'p')
+root = vim.uv.fs_realpath(root)
 local function jj(args) return file.jj(root, args) end
 local function eq(a, b) assert(vim.deep_equal(a, b), vim.inspect({ expected = a, actual = b })) end
 local function test()
@@ -38,6 +39,29 @@ local function test()
   vim.api.nvim_win_set_cursor(0, { find(function(r) return r.new_line == 2 and not r.old_side and not r.hunk end), 0 })
   log.visit(buf); eq(workspace, vim.api.nvim_get_current_buf()); eq(2, vim.fn.line('.'))
   print('PASS: revision snapshots, merged-base extraction, workspace reuse, and diff coordinates')
+  file.open(root, base, 'file.lua')
+  local historical = vim.api.nvim_get_current_buf()
+  vim.api.nvim_buf_set_lines(0, 0, -1, false, { 'saved', 'two', 'three' })
+  eq(false, pcall(file.write, historical, {}))
+  vim.bo.readonly = false
+  vim.cmd('Jwrite --restore-descendants')
+  eq(false, vim.bo.modified)
+  eq('saved\ntwo\nthree\n', file.content(root, vim.b.fujutsu_file.id, 'file.lua'))
+  eq('one\nchanged\nthree\n', file.content(root, '@', 'file.lua'))
+  local saved = vim.b.fujutsu_file.id
+  jj({ 'describe', '-r', saved, '-m', 'description only' })
+  vim.cmd.write()
+  local meta = vim.b.fujutsu_file
+  jj({ 'restore', '--from', '@', '--to', meta.id, 'file.lua' })
+  vim.api.nvim_buf_set_lines(0, 0, -1, false, { 'replacement' })
+  eq(false, pcall(file.write, historical, {})); eq(true, vim.bo.modified)
+  vim.bo[workspace].modified = true
+  eq(false, pcall(file.write, historical, { bang = true }))
+  vim.bo[workspace].modified = false
+  vim.cmd('Jwrite! --restore-descendants')
+  eq('replacement\n', file.content(root, vim.b.fujutsu_file.id, 'file.lua'))
+  eq(false, pcall(vim.cmd, 'Jwrite --ignore-imm'))
+  print('PASS: readonly, diffedit writes, descendant restoration, stale and unsaved-buffer guards')
 end
 local ok, err = xpcall(test, debug.traceback)
 vim.fn.delete(root, 'rf')
