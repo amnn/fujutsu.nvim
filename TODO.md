@@ -113,7 +113,7 @@ operations, even when the underlying jj operation is `diffedit`.
 
 ## Summary parent directory handling
 
-- [ ] Handle parent-directory navigation from the summary/log buffer: open the
+- [x] Handle parent-directory navigation from the summary/log buffer: open the
   repository's `.jj` directory, analogous to Fugitive opening `.git`.
 
 For each stage, add focused tests and update README.md with the implemented

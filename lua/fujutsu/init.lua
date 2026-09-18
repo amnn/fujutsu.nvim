@@ -105,6 +105,9 @@ function M.open(opts)
       stale[buf] = nil
     end,
   })
+  vim.keymap.set('n', '-', function()
+    vim.cmd.edit(vim.fn.fnameescape(root .. '/.jj'))
+  end, { buffer = buf, silent = true, desc = 'Open repository metadata directory' })
   for kind, pairs_ in pairs({ revision = { { '[[', ']]' } },
     file = { { '{{', '}}' }, { '[m', ']m' }, { '[/', ']/' } },
     hunk = { { '[c', ']c' } }, item = { { '(', ')' } } }) do

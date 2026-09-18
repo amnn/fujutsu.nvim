@@ -204,6 +204,13 @@ Fugitive's summary has staged/unstaged sections; this log has revisions instead.
 Fugitive, movement never reveals or hides diffs. Section-end mappings and `J`/`K`
 hunk aliases are not ported; their normal Vim behavior is retained.
 
+## Parent directory
+
+Press `-` in a log to edit that repository's `.jj` directory in the current
+window, analogous to Fugitive's metadata-directory navigation. This delegates
+directory browsing to your configured directory handler (such as netrw); it does
+not derive a parent from the log's synthetic URI or change Neovim's directory.
+
 ## Tests
 
 With Neovim and jj installed, run from the checkout:
