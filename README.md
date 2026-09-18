@@ -184,6 +184,26 @@ Use `Jwrite! --ignore-immutable` only when explicitly intending both overrides.
 Successful writes adopt jj's normalized description and new revision identity,
 clear modified, and invalidate logs; failures keep your edits.
 
+## Log boundary mappings
+
+Normal-mode mappings accept counts, move strictly forward/backward, and stop at
+the last available boundary without wrapping. Only visible boundaries count:
+collapsed files/hunks are not expanded, and graph-only/margin rows are skipped.
+
+| Previous / next | Destination |
+| --- | --- |
+| `[[` / `]]` | Revision starts |
+| `{{` / `}}`, `[m` / `]m`, `[/` / `]/` | File rows |
+| `[c` / `]c` | Expanded hunk headers |
+| `(` / `)` | File rows and expanded hunk headers |
+
+Audited against Fugitive's `NextSection`, `NextFile`, `NextHunk`, `NextItem`, and
+mapping definitions in [autoload/fugitive.vim](https://github.com/tpope/vim-fugitive/blob/master/autoload/fugitive.vim).
+Fugitive's summary has staged/unstaged sections; this log has revisions instead.
+`{{`/`}}` are our explicit file-boundary aliases, not Fugitive mappings. Unlike
+Fugitive, movement never reveals or hides diffs. Section-end mappings and `J`/`K`
+hunk aliases are not ported; their normal Vim behavior is retained.
+
 ## Tests
 
 With Neovim and jj installed, run from the checkout:

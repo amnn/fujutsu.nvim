@@ -237,6 +237,30 @@ function M.new(root, jj)
     state.rows = rows
   end
 
+  function state.move(kind, direction, count)
+    local targets = {}
+    for index, row in pairs(state.rows) do
+      local entry = row.entry or row
+      local revision = index == entry.first
+      local file = row.path and index == row.first
+      if (kind == 'revision' and revision) or (kind == 'file' and file)
+        or (kind == 'hunk' and row.hunk) or (kind == 'item' and (file or row.hunk)) then
+        targets[#targets + 1] = index
+      end
+    end
+    table.sort(targets, function(a, b) return direction > 0 and a < b or direction < 0 and a > b end)
+    local current = vim.api.nvim_win_get_cursor(0)[1]
+    local remaining = count or 1
+    for _, target in ipairs(targets) do
+      if (target - current) * direction > 0 then
+        current = target
+        remaining = remaining - 1
+        if remaining == 0 then break end
+      end
+    end
+    vim.api.nvim_win_set_cursor(0, { current, 0 })
+  end
+
   function state.selection(buf)
     local index = vim.api.nvim_win_get_cursor(0)[1]
     local previous = state.rows[index]

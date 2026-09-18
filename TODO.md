@@ -103,12 +103,12 @@ operations, even when the underlying jj operation is `diffedit`.
 
 ## Summary/log navigation keybindings
 
-- [ ] Audit Fugitive's summary-page navigation mappings and port the applicable
+- [x] Audit Fugitive's summary-page navigation mappings and port the applicable
   conventions to the log view, including `[[`, `]]`, `{{`, and `}}`.
-- [ ] Define their equivalents for revision, file, and hunk boundaries; document
+- [x] Define their equivalents for revision, file, and hunk boundaries; document
   any deliberate differences from Fugitive rather than assuming identical page
   structure.
-- [ ] Test counts, forward/backward movement, collapsed sections, graph-only
+- [x] Test counts, forward/backward movement, collapsed sections, graph-only
   rows, and beginning/end-of-buffer behavior. Document the supported mappings.
 
 ## Summary parent directory handling

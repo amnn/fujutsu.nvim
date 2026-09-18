@@ -150,6 +150,29 @@ local function test()
   eq(false, vim.bo.modified)
   jj({ 'config', 'set', '--repo', 'revset-aliases."immutable_heads()"', 'root()' })
   print('PASS: description navigation, writes, stale replacement, readonly, immutability, and failure retention')
+  vim.api.nvim_set_current_buf(buf)
+  log.refresh(buf)
+  vim.api.nvim_win_set_cursor(0, { 1, 0 })
+  log.move('revision', 1, 2)
+  local revision = vim.fn.line('.')
+  eq(revision, (log.rows[revision].entry or log.rows[revision]).first)
+  log.move('revision', -1, 999); eq(1, vim.fn.line('.'))
+  log.move('revision', -1, 1); eq(1, vim.fn.line('.'))
+  vim.api.nvim_win_set_cursor(0, { find(function(r) return r.path == 'file.lua' end), 0 })
+  -- Expand a file if necessary; movement itself never changes expansion.
+  local has_hunk = false
+  for _, row in pairs(log.rows) do if row.hunk then has_hunk = true end end
+  if not has_hunk then log.toggle(buf) end
+  vim.api.nvim_win_set_cursor(0, { 1, 0 }); log.move('hunk', 1, 1)
+  assert(log.rows[vim.fn.line('.')].hunk)
+  log.move('file', -1, 1)
+  eq(vim.fn.line('.'), log.rows[vim.fn.line('.')].first)
+  log.toggle(buf) -- Collapse; hidden hunks must no longer be destinations.
+  vim.api.nvim_win_set_cursor(0, { 1, 0 }); log.move('hunk', 1, 999)
+  eq(1, vim.fn.line('.'))
+  log.move('file', 1, 999)
+  local last = vim.fn.line('.'); log.move('file', 1, 1); eq(last, vim.fn.line('.'))
+  print('PASS: boundary motion counts, backward movement, collapsed hunks, and buffer limits')
 end
 local ok, err = xpcall(test, debug.traceback)
 vim.fn.delete(root, 'rf')

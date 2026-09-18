@@ -105,6 +105,17 @@ function M.open(opts)
       stale[buf] = nil
     end,
   })
+  for kind, pairs_ in pairs({ revision = { { '[[', ']]' } },
+    file = { { '{{', '}}' }, { '[m', ']m' }, { '[/', ']/' } },
+    hunk = { { '[c', ']c' } }, item = { { '(', ')' } } }) do
+    for _, keys in ipairs(pairs_) do
+      for index, key in ipairs(keys) do
+        vim.keymap.set('n', key, function()
+          log.move(kind, index == 1 and -1 or 1, vim.v.count1)
+        end, { buffer = buf, silent = true, desc = 'Move to ' .. kind .. ' boundary' })
+      end
+    end
+  end
   vim.keymap.set('n', '<CR>', function()
     local success, message = pcall(log.visit, buf)
     if not success then vim.notify(message, vim.log.levels.ERROR) end
