@@ -56,19 +56,19 @@ operations, even when the underlying jj operation is `diffedit`.
 
 ### 3. Add `Jedit` and `Jview`
 
-- [ ] Support `:Jedit [-r R] [file]` and `:Jview [-r R] [file]`. Revision defaults
+- [x] Support `:Jedit [-r R] [file]` and `:Jview [-r R] [file]`. Revision defaults
   to `@`; omitted files use the current buffer's file identity, including historical
   buffers. In logs, infer a file only from a file row or diff under the cursor.
-- [ ] Resolve explicit paths relative to Neovim's current directory, like `:edit`.
+- [x] Resolve explicit paths relative to Neovim's current directory, like `:edit`.
   Support `--` for filenames beginning with `-`.
-- [ ] `Jedit` opens writable buffers; `Jview` opens readonly buffers. Both leave
+- [x] `Jedit` opens writable buffers; `Jview` opens readonly buffers. Both leave
   `modifiable` enabled. `@` uses real file buffers; other revisions use revision
   buffers. Opening never mutates the repository or requires immutability bypass.
-- [ ] Preserve normal Vim modified-buffer/hidden-buffer safeguards. Remember that
+- [x] Preserve normal Vim modified-buffer/hidden-buffer safeguards. Remember that
   readonly is buffer-local and affects all windows displaying that buffer.
-- [ ] Bare `:Jedit` from a historical buffer opens its working-copy counterpart;
+- [x] Bare `:Jedit` from a historical buffer opens its working-copy counterpart;
   `:Jedit -r R` selects a historical revision explicitly.
-- [ ] Provide argument completion. Rely on Vim's unambiguous user-command prefixes
+- [x] Provide argument completion. Rely on Vim's unambiguous user-command prefixes
   (`:Je`, `:Jw`, etc.) rather than promising aliases that could become ambiguous.
 
 ### 4. Add ancillary edit commands

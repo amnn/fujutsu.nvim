@@ -129,6 +129,22 @@ Successful saves advance only the writing buffer, clear its modified flag, and
 invalidate logs; failures retain edits. Other historical buffers remain pinned.
 Three-way stale-buffer reconciliation is deferred.
 
+## Selecting files
+
+`:Jedit [-r R] [file]` opens writable files; `:Jview [-r R] [file]` opens them
+readonly. Both leave `modifiable` enabled. Revision defaults to `@`, even from a
+historical buffer: bare `Jedit` returns to its workspace counterpart. Explicit
+non-`@` selections remain historical snapshots. Omitted filenames use the current
+file's identity; in logs only file rows and their diffs infer filenames.
+
+Explicit paths are relative to Neovim's current directory, like `:edit`, and must
+be inside the current repository. Escape spaces with backslashes; use `--` before
+filenames starting with `-`. File and revision argument completion is available.
+Normal modified/hidden-buffer safeguards apply. Readonly is buffer-local, so
+changing it affects every window showing that buffer. Opening does not rewrite
+history and never needs an immutability override. Use Vim's unambiguous command
+prefixes (`:Je`, `:Jw`); no extra aliases are installed.
+
 ## Tests
 
 With Neovim and jj installed, run from the checkout:

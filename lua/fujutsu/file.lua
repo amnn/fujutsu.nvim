@@ -52,12 +52,18 @@ function M.open(root, id, path, opts)
   opts = opts or {}
   local name = opts.workspace and (root .. '/' .. path)
     or ('fujutsu://%s/%s/%s'):format(root, opts.base and (id .. '-parents') or id, path)
+  local content, change
+  if not opts.workspace and vim.fn.bufnr(name) == -1 then
+    content = opts.base and M.base(root, id, path) or M.content(root, id, path)
+    local ignored
+    ignored, change = M.resolve(root, id)
+  end
   local command = opts.command or 'split'
   vim.cmd({ cmd = command, args = { vim.fn.fnameescape(name) }, mods = opts.mods or {} })
   local buf = vim.api.nvim_get_current_buf()
   if not opts.workspace and not vim.b[buf].fujutsu_file then
-    local content = opts.base and M.base(root, id, path) or M.content(root, id, path)
-    local _, change = M.resolve(root, id)
+    content = content or (opts.base and M.base(root, id, path) or M.content(root, id, path))
+    if not change then local ignored; ignored, change = M.resolve(root, id) end
     vim.bo[buf].buftype = 'acwrite'
     vim.bo[buf].swapfile = false
     M.set_content(buf, content)
@@ -66,6 +72,10 @@ function M.open(root, id, path, opts)
     vim.bo[buf].filetype = vim.filetype.match({ filename = path, buf = buf }) or ''
     vim.bo[buf].modified = false
     vim.bo[buf].readonly = true
+    vim.api.nvim_create_autocmd('BufReadCmd', { buffer = buf, callback = function()
+      M.set_content(buf, vim.b[buf].fujutsu_file.content)
+      vim.bo[buf].modified = false
+    end })
     vim.api.nvim_create_autocmd('BufWriteCmd', { buffer = buf, callback = function()
       M.write(buf, { bang = vim.v.cmdbang == 1 })
     end })
