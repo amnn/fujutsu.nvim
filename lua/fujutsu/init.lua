@@ -60,51 +60,28 @@ vim.api.nvim_create_autocmd('BufEnter', {
   end,
 })
 
-function M.open(opts)
-  opts = opts or {}
-  local mods = opts.smods or {}
-  local root = vim.trim(jj(current_directory(), { 'root' }))
-  root = vim.uv.fs_realpath(root) or root
-
-  -- An explicit :tab modifier always requests a new tab, even if this tab
-  -- already has a log window. Otherwise reuse only windows in this tab.
-  if not (mods.tab and mods.tab >= 0) then
-    for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
-      local buf = vim.api.nvim_win_get_buf(win)
-      if logs[buf] and vim.b[buf].fujutsu_repo == root then
-        refresh(buf)
-        vim.api.nvim_set_current_win(win)
-        return
-      end
-    end
-  end
-
-  local buf = vim.api.nvim_create_buf(false, true)
+function M.read_log(buf, root)
   vim.b[buf].fujutsu_repo = root
-  vim.api.nvim_buf_set_name(buf, ('fujutsu://%d/log'):format(buf))
-  vim.bo[buf].bufhidden = 'wipe'
+  vim.bo[buf].buftype = 'nowrite'
+  vim.bo[buf].bufhidden = 'hide'
   vim.bo[buf].swapfile = false
-  local log = require('fujutsu.log').new(root, jj)
-  local refreshed, refresh_err = pcall(log.refresh, buf)
-  if not refreshed then
-    vim.api.nvim_buf_delete(buf, { force = true })
-    error(refresh_err, 0)
+  vim.bo[buf].buflisted = false
+  local log = logs[buf]
+  if log then
+    try_refresh(buf)
+  else
+    log = require('fujutsu.log').new(root, jj)
+    log.refresh(buf)
+    logs[buf] = log
+    vim.api.nvim_create_autocmd('BufWipeout', {
+      buffer = buf,
+      once = true,
+      callback = function()
+        logs[buf] = nil
+        stale[buf] = nil
+      end,
+    })
   end
-  logs[buf] = log
-  vim.api.nvim_create_autocmd('BufReadCmd', {
-    buffer = buf,
-    callback = function()
-      try_refresh(buf)
-    end,
-  })
-  vim.api.nvim_create_autocmd('BufWipeout', {
-    buffer = buf,
-    once = true,
-    callback = function()
-      logs[buf] = nil
-      stale[buf] = nil
-    end,
-  })
   vim.keymap.set('n', '-', function()
     vim.cmd.edit(vim.fn.fnameescape(root .. '/.jj'))
   end, { buffer = buf, silent = true, desc = 'Open repository metadata directory' })
@@ -127,6 +104,33 @@ function M.open(opts)
     local success, message = pcall(log.toggle, buf)
     if not success then vim.notify(message, vim.log.levels.ERROR) end
   end, { buffer = buf, silent = true, desc = 'Toggle revision stats or file diff' })
+  vim.bo[buf].filetype = 'fujutsu'
+end
+
+function M.open(opts)
+  opts = opts or {}
+  local mods = opts.smods or {}
+  local root = vim.trim(jj(current_directory(), { 'root' }))
+  root = vim.uv.fs_realpath(root) or root
+
+  -- Explicit :tab always requests a new tab; otherwise reuse this tab's log.
+  if not (mods.tab and mods.tab >= 0) then
+    for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+      local buf = vim.api.nvim_win_get_buf(win)
+      if logs[buf] and vim.b[buf].fujutsu_repo == root then
+        refresh(buf)
+        vim.api.nvim_set_current_win(win)
+        return
+      end
+    end
+  end
+  local buf = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_set_name(buf, require('fujutsu.uri').name(root, 'log', tostring(buf)))
+  local ready, message = pcall(M.read_log, buf, root)
+  if not ready then
+    vim.api.nvim_buf_delete(buf, { force = true })
+    error(message, 0)
+  end
   local ok, err = pcall(vim.cmd, { cmd = 'sbuffer', args = { tostring(buf) }, mods = mods })
   if not ok then
     vim.api.nvim_buf_delete(buf, { force = true })

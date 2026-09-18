@@ -78,21 +78,33 @@ function M.set_content(buf, content)
   vim.bo[buf].fixendofline = false
 end
 
+function M.read(buf, location)
+  local root, id, path = location.root, location.id, location.path
+  local description = location.kind == 'description'
+  local content = description and M.jj(root, { '--ignore-working-copy', 'log', '--no-graph', '-r', id, '-T', 'description' })
+    or (location.base and M.base(root, id, path) or M.content(root, id, path))
+  local _, change = M.resolve(root, id)
+  local previous = vim.b[buf].fujutsu_file
+  vim.bo[buf].buftype = 'acwrite'
+  vim.bo[buf].swapfile = false
+  vim.bo[buf].modifiable = true
+  M.set_content(buf, content)
+  vim.b[buf].fujutsu_repo = root
+  vim.b[buf].fujutsu_file = { id = id, change = change, path = path, base = location.base,
+    description = description, content = content,
+    target_fingerprint = previous and previous.target_fingerprint }
+  vim.bo[buf].filetype = description and 'gitcommit' or (vim.filetype.match({ filename = path, buf = buf }) or '')
+  vim.bo[buf].modified = false
+  if not previous then vim.bo[buf].readonly = true end
+  vim.keymap.set('n', '-', function()
+    require('fujutsu.tree').parent(vim.v.count1)
+  end, { buffer = buf, silent = true, desc = 'Open parent in this revision' })
+end
+
 function M.open(root, id, path, opts)
   opts = opts or {}
-  local scheme = opts.description and 'fujutsu-description' or 'fujutsu'
   local name = opts.workspace and (root .. '/' .. path)
-    or ('%s://%s/%s/%s'):format(scheme, root, opts.base and (id .. '-parents') or id, path)
-  local function load()
-    if opts.description then return M.jj(root, { '--ignore-working-copy', 'log', '--no-graph', '-r', id, '-T', 'description' }) end
-    return opts.base and M.base(root, id, path) or M.content(root, id, path)
-  end
-  local content, change
-  if not opts.workspace and vim.fn.bufnr(name) == -1 then
-    content = load()
-    local ignored
-    ignored, change = M.resolve(root, id)
-  end
+    or require('fujutsu.uri').name(root, opts.description and 'description' or 'file', id, path, opts.base)
   local command = opts.command or 'split'
   vim.cmd({ cmd = command, args = { vim.fn.fnameescape(name) }, mods = opts.mods or {} })
   local win = vim.api.nvim_get_current_win()
@@ -102,26 +114,6 @@ function M.open(root, id, path, opts)
     end
   end
   local buf = vim.api.nvim_win_get_buf(win)
-  if not opts.workspace and not vim.b[buf].fujutsu_file then
-    content = content or load()
-    if not change then local ignored; ignored, change = M.resolve(root, id) end
-    vim.bo[buf].buftype = 'acwrite'
-    vim.bo[buf].swapfile = false
-    M.set_content(buf, content)
-    vim.b[buf].fujutsu_repo = root
-    vim.b[buf].fujutsu_file = { id = id, change = change, path = path, base = opts.base,
-      description = opts.description, content = content }
-    vim.bo[buf].filetype = opts.description and 'gitcommit' or (vim.filetype.match({ filename = path, buf = buf }) or '')
-    vim.bo[buf].modified = false
-    vim.bo[buf].readonly = true
-    vim.api.nvim_create_autocmd('BufReadCmd', { buffer = buf, callback = function()
-      M.set_content(buf, vim.b[buf].fujutsu_file.content)
-      vim.bo[buf].modified = false
-    end })
-    vim.api.nvim_create_autocmd('BufWriteCmd', { buffer = buf, callback = function()
-      M.write(buf, { bang = vim.v.cmdbang == 1 })
-    end })
-  end
   if opts.explicit and not opts.workspace then
     local meta = vim.b[buf].fujutsu_file
     local visible = M.visible(root, meta.change)
@@ -166,7 +158,7 @@ function M.advance(buf, root, meta, content)
   if meta.target_fingerprint then meta.target_fingerprint = M.visible(root, meta.change) end
   meta.content = content
   vim.b[buf].fujutsu_file = meta
-  local name = ('%s://%s/%s/%s'):format(meta.description and 'fujutsu-description' or 'fujutsu', root, meta.id, meta.path)
+  local name = require('fujutsu.uri').name(root, meta.description and 'description' or 'file', meta.id, meta.path)
   local existing = vim.fn.bufnr(name)
   if existing ~= -1 and existing ~= buf then name = name .. '?buffer=' .. buf end
   vim.api.nvim_buf_set_name(buf, name)

@@ -44,7 +44,8 @@ vim.opt.runtimepath:prepend('/path/to/fujutsu.nvim')
   The header shows five boxes and counts for the whole change. Boxes show the
   proportion of added and removed lines, with unused boxes gray for small diffs.
   Zero counts are omitted; binary and empty-file changes remain visible.
-- Close a log with `:q`. It is a disposable, read-only scratch buffer.
+- Close a log window with `:q`. The read-only log stays hidden so jump-list
+  navigation can return to it; use `:bwipeout` to discard it explicitly.
 
 The repository is resolved from the current file's directory, or the current
 working directory for unnamed/special buffers. From a log buffer, its repository
@@ -207,9 +208,23 @@ hunk aliases are not ported; their normal Vim behavior is retained.
 ## Parent directory
 
 Press `-` in a log to edit that repository's `.jj` directory in the current
-window, analogous to Fugitive's metadata-directory navigation. This delegates
-directory browsing to your configured directory handler (such as netrw); it does
-not derive a parent from the log's synthetic URI or change Neovim's directory.
+window. Real directory browsing is delegated to your configured handler (such as
+Oil or netrw), without changing Neovim's current directory.
+
+In historical files, `-` opens a read-only directory listing **in the same pinned
+revision**, not the working-copy directory and not a filesystem interpretation of
+the virtual URI. Enter opens the selected file or subdirectory; `-` ascends again.
+Counts ascend multiple levels. At the revision's root, `-` stays there rather than
+switching revisions (unlike Fugitive's traversal onward through commit ancestry).
+Synthetic merged-parent listings contain only the diff's old-side changed paths;
+they remain non-writable and never substitute a single parent revision.
+
+`Ctrl-O` goes back and `Ctrl-I` goes forward. Hidden logs retain expansion state;
+URI-wide readers can reconstruct logs, files, descriptions, and trees after their
+buffers are unloaded or deleted. Normal modified/hidden-buffer safeguards still
+apply. Explicit `:bwipeout` can remove Vim jump-list entries; directory browsers
+also control the lifetime of their own buffers. No plugin-specific back/forward
+mappings are needed.
 
 ## Tests
 
@@ -219,10 +234,12 @@ With Neovim and jj installed, run from the checkout:
 nvim --headless -u NONE -l tests/run.lua
 nvim --headless -u NONE -l tests/edit.lua
 nvim --headless -u NONE -l tests/safety.lua
+nvim --headless -u NONE -l tests/parents.lua
 ```
 
 Tests create and remove temporary jj repositories; no plugin test dependencies
-are needed.
+are needed. To exercise parent navigation with Oil's actual directory handler,
+run `tests/parents.lua` with `FUJUTSU_TEST_OIL=/path/to/oil.nvim`.
 
 ## License
 

@@ -181,7 +181,8 @@ local function test()
   parent.callback()
   eq(root .. '/.jj', vim.api.nvim_buf_get_name(0):gsub('/$', ''))
   eq(true, vim.fn.isdirectory(vim.api.nvim_buf_get_name(0)) == 1)
-  eq(false, vim.api.nvim_buf_is_valid(logbuf)) -- Normal log wipe-on-hide lifecycle.
+  eq(true, vim.api.nvim_buf_is_valid(logbuf)) -- Keep jump-list destinations alive.
+  eq('hide', vim.bo[logbuf].bufhidden)
   print('PASS: log parent navigation opens this repository metadata directory')
 end
 local ok, err = xpcall(test, debug.traceback)

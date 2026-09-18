@@ -3,6 +3,25 @@ if vim.g.loaded_fujutsu then
 end
 vim.g.loaded_fujutsu = true
 
+-- URI-wide readers survive buffer unload/delete and jump-list restoration.
+-- Buffer-local readers alone disappear with the buffer they need to restore.
+local virtual = vim.api.nvim_create_augroup('fujutsu_virtual', { clear = true })
+vim.api.nvim_create_autocmd('BufReadCmd', {
+  group = virtual, pattern = 'fujutsu://*', nested = true,
+  callback = function(event)
+    local location = require('fujutsu.uri').parse(vim.api.nvim_buf_get_name(event.buf))
+    if location.kind == 'log' then require('fujutsu').read_log(event.buf, location.root)
+    elseif location.kind == 'tree' then require('fujutsu.tree').read(event.buf, location)
+    else require('fujutsu.file').read(event.buf, location) end
+  end,
+})
+vim.api.nvim_create_autocmd('BufWriteCmd', {
+  group = virtual, pattern = 'fujutsu://*',
+  callback = function(event)
+    require('fujutsu.file').write(event.buf, { bang = vim.v.cmdbang == 1 })
+  end,
+})
+
 vim.api.nvim_create_user_command('J', function(opts)
   local ok, err = pcall(require('fujutsu').open, opts)
   if not ok then
