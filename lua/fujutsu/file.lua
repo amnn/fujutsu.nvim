@@ -106,7 +106,7 @@ function M.open(root, id, path, opts)
   local name = opts.workspace and (root .. '/' .. path)
     or require('fujutsu.uri').name(root, opts.description and 'description' or 'file', id, path, opts.base)
   local command = opts.command or 'split'
-  vim.cmd({ cmd = command, args = { vim.fn.fnameescape(name) }, mods = opts.mods or {} })
+  require('fujutsu.window').open(command, name, opts.mods)
   local win = vim.api.nvim_get_current_win()
   if command == 'pedit' then
     for _, candidate in ipairs(vim.api.nvim_tabpage_list_wins(0)) do

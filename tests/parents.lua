@@ -66,12 +66,32 @@ local function test()
   keys('2-'); eq('nested', vim.b.fujutsu_tree.path)
   eq({ 'deeper/', 'other.txt' }, vim.api.nvim_buf_get_lines(0, 0, -1, false))
   keys('99-'); eq('', vim.b.fujutsu_tree.path)
-  local top = vim.api.nvim_get_current_buf(); keys('-'); eq(top, vim.api.nvim_get_current_buf())
+  local top = vim.api.nvim_get_current_buf()
+  local windows = #vim.api.nvim_tabpage_list_wins(0)
+  keys('-')
+  eq('fujutsu', vim.bo.filetype)
+  eq(id, require('fujutsu').selection().id)
+  eq(windows, #vim.api.nvim_tabpage_list_wins(0))
+  keys('<C-o>'); eq(top, vim.api.nvim_get_current_buf())
+  local logcount = 0
+  for _, buffer in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.b[buffer].fujutsu_log then logcount = logcount + 1 end
+  end
+  keys('-'); eq('fujutsu', vim.bo.filetype)
+  local after = 0
+  for _, buffer in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.b[buffer].fujutsu_log then after = after + 1 end
+  end
+  eq(logcount, after) -- Reuse the hidden log rather than allocating another.
+  require('fujutsu.tree').open(root, id, 'nested/deeper', false)
+  vim.cmd.edit() -- Reinstall mappings through the URI reader, too.
+  keys('-'); eq('nested', vim.b.fujutsu_tree.path); eq(id, vim.b.fujutsu_tree.id)
+  eq('deeper/', vim.api.nvim_get_current_line())
   vim.api.nvim_buf_delete(historical, { force = true })
   vim.cmd.edit(vim.fn.fnameescape(name))
   eq(id, vim.b.fujutsu_file.id); eq(true, vim.bo.readonly); eq(true, vim.bo.modifiable)
   eq('historical\nsecond line\n', file.buffer_content(0))
-  print('PASS: pinned parent trees, deleted workspace directories, counts, URI escaping, and reload')
+  print('PASS: pinned parents, root-to-log navigation and reuse, counts, URI escaping, and reload')
 
   vim.cmd('only!'); vim.o.hidden = false
   vim.bo.readonly = false

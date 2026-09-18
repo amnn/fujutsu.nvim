@@ -62,6 +62,7 @@ vim.api.nvim_create_autocmd('BufEnter', {
 
 function M.read_log(buf, root)
   vim.b[buf].fujutsu_repo = root
+  vim.b[buf].fujutsu_log = true
   vim.bo[buf].buftype = 'nowrite'
   vim.bo[buf].bufhidden = 'hide'
   vim.bo[buf].swapfile = false
@@ -96,15 +97,28 @@ function M.read_log(buf, root)
       end
     end
   end
-  vim.keymap.set('n', '<CR>', function()
-    local success, message = pcall(log.visit, buf)
-    if not success then vim.notify(message, vim.log.levels.ERROR) end
-  end, { buffer = buf, silent = true, desc = 'Visit file revision' })
+  for key, command in pairs({ ['<CR>'] = 'edit', o = 'split', gO = 'vsplit', O = 'tabedit', p = 'pedit' }) do
+    vim.keymap.set('n', key, function()
+      local success, message = pcall(log.visit, buf, command)
+      if not success then vim.notify(message, vim.log.levels.ERROR) end
+    end, { buffer = buf, silent = true, desc = 'Visit revision with ' .. command })
+  end
   vim.keymap.set('n', '=', function()
     local success, message = pcall(log.toggle, buf)
     if not success then vim.notify(message, vim.log.levels.ERROR) end
   end, { buffer = buf, silent = true, desc = 'Toggle revision stats or file diff' })
   vim.bo[buf].filetype = 'fujutsu'
+end
+
+local function focus_revision(buf, id)
+  if not id then return end
+  for index, row in pairs(logs[buf].rows) do
+    local entry = row.entry or row
+    if entry.id == id and entry.first == index then
+      vim.api.nvim_win_set_cursor(0, { index, 0 })
+      return
+    end
+  end
 end
 
 function M.open(opts)
@@ -119,7 +133,20 @@ function M.open(opts)
       local buf = vim.api.nvim_win_get_buf(win)
       if logs[buf] and vim.b[buf].fujutsu_repo == root then
         refresh(buf)
-        vim.api.nvim_set_current_win(win)
+        if opts.current_window then vim.cmd.buffer(buf)
+        else vim.api.nvim_set_current_win(win) end
+        focus_revision(buf, opts.revision)
+        return
+      end
+    end
+  end
+  if opts.current_window then
+    for buf in pairs(logs) do
+      if vim.api.nvim_buf_is_valid(buf) and vim.b[buf].fujutsu_repo == root
+        and #vim.fn.win_findbuf(buf) == 0 then
+        refresh(buf)
+        vim.cmd.buffer(buf)
+        focus_revision(buf, opts.revision)
         return
       end
     end
@@ -131,13 +158,15 @@ function M.open(opts)
     vim.api.nvim_buf_delete(buf, { force = true })
     error(message, 0)
   end
-  local ok, err = pcall(vim.cmd, { cmd = 'sbuffer', args = { tostring(buf) }, mods = mods })
+  local ok, err = pcall(vim.cmd, { cmd = opts.current_window and 'buffer' or 'sbuffer',
+    args = { tostring(buf) }, mods = mods })
   if not ok then
     vim.api.nvim_buf_delete(buf, { force = true })
     error(err, 0)
   end
   vim.bo[buf].filetype = 'fujutsu'
   vim.wo.wrap = false
+  focus_revision(buf, opts.revision)
 end
 
 function M.selection()

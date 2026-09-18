@@ -10,12 +10,14 @@ operations, even when the underlying jj operation is `diffedit`.
 
 ### 1. Visit files from the log
 
-- [x] Enter opens the corresponding file in a split: added/context lines use the
+- [x] Enter visits the corresponding file, reusing an editing window (explicit
+  split/tab/preview mappings are separate): added/context lines use the
   revision's new-side line number; removed lines use the diff base's old-side
   line number. File rows and hunk headers open the corresponding file/hunk.
 - [x] Open current-workspace `@` destinations as normal files, reusing existing
   buffers. Open historical destinations as commit-pinned, readonly revision
-  buffers, with normal syntax highlighting and clearly revision-qualified names.
+  buffers, with normal syntax highlighting, clearly revision-qualified names,
+  and statusline change IDs (`@` working copies, `○` historical, `⋎` synthetic parents).
 - [x] Keep historical file buffers `modifiable`; Vim's `readonly` protects writes,
   not edits. The log itself remains `nomodifiable`. Do not add a custom mapping
   for `:setlocal noreadonly` (`:setl noro`).

@@ -21,6 +21,10 @@ function M.parent(count)
   local meta = tree or revision
   assert(meta, 'Not a revision buffer')
   local path = meta.description and '' or meta.path
+  if tree and path == '' then
+    require('fujutsu').open({ current_window = true, revision = meta.id })
+    return
+  end
   local focus = path
   for _ = 1, count or 1 do
     focus, path = path, dirname(path)
@@ -72,7 +76,8 @@ function M.read(buf, location)
   vim.bo[buf].readonly = true
   vim.bo[buf].filetype = 'fujutsu-tree'
   vim.b[buf].fujutsu_repo = root
-  vim.b[buf].fujutsu_tree = { id = id, path = path, base = location.base, entries = entries }
+  local _, change = file.resolve(root, id)
+  vim.b[buf].fujutsu_tree = { id = id, change = change, path = path, base = location.base, entries = entries }
   vim.keymap.set('n', '-', function() M.parent(vim.v.count1) end,
     { buffer = buf, silent = true, desc = 'Open parent in this revision' })
   vim.keymap.set('n', '<CR>', function()

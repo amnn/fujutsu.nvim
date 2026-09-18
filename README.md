@@ -1,7 +1,7 @@
 # fujutsu.nvim
 
 A small, Fugitive-inspired [Jujutsu](https://jj-vcs.dev/) interface for Neovim.
-Currently provides a read-only log view.
+Browse the log, navigate revision files, and edit historical contents and descriptions.
 
 ## Requirements
 
@@ -95,9 +95,29 @@ changes, reapply them in your own `ColorScheme` autocmd.
 
 ## File navigation
 
-Enter on a log file, hunk, or diff line opens a split. Added/context lines use
-new-side coordinates; removed lines and deleted files use the old path and
-parent-side coordinates. Merge old sides use jj's merged-parent tree, not its
+Enter on a log file, hunk, or diff line visits it in an editing window, keeping
+the log open. In the current tab, prefer a suitable window already displaying the
+destination, then the previous editing window, then another editing window. Only
+create a split if none is available. Repeated visits reuse buffers and windows;
+an already displayed destination is not reloaded, so its unsaved edits survive.
+Preview, fixed-width/fixed-buffer, diff, and special-purpose windows are not
+replaced. Normal modified-buffer safeguards apply; no bang is implied.
+
+| Log mapping | Placement |
+| --- | --- |
+| Enter | Reuse an editing window |
+| `o` | New horizontal split |
+| `gO` | New vertical split |
+| `O` | New tab |
+| `p` | Reusable preview window; keep focus in the log |
+
+This follows Fugitive's distinction between visiting and explicitly splitting.
+`Jedit`/`Jview` from a log use the same editor selection; elsewhere they edit the
+current window. Only `Jdrop` searches other tabs for existing windows. Different
+commits still have separate buffers, even when their file contents match.
+
+Added/context lines use new-side coordinates; removed lines and deleted files use
+the old path and parent-side coordinates. Merge old sides use jj's merged-parent tree, not its
 first parent, and have no writable revision target. Navigation refreshes the log
 first; if the selected row changed, select it again rather than trusting stale
 coordinates.
@@ -106,6 +126,54 @@ Current-workspace destinations reuse normal file buffers. Historical files have
 commit-qualified `fujutsu://` names and syntax highlighting, and remain pinned.
 They are `readonly` but `modifiable` (unlike the log). Use normal `:setlocal
 noreadonly` to permit writes; there is no custom toggle mapping.
+
+### Revision-aware statusline context
+
+| File version | VC segment |
+| --- | --- |
+| Working-copy file in a jj workspace | `@ qvkwzrsntplm` |
+| Historical file | `○ qvkwzrsntplm` |
+| Synthetic merged parents | `⋎ qvkwzrsntplm` |
+| Non-jj file | Existing Git branch (lualine) / no additional label (native) |
+
+IDs are the first 12 characters of the jj **change ID**, stable across rewrites;
+the historical buffer's URI still identifies its exact pinned commit. A pinned
+buffer remains historical even if its commit becomes `@`. Descriptions and
+historical directories show the same context. There are no extra readonly or
+modified indicators: your existing statusline owns those.
+
+Working-copy IDs are cached per workspace, read asynchronously on navigation,
+saves, and focus changes without snapshotting the repository. Until the first
+lookup finishes, the working-copy segment shows just `@`. Redrawing the
+statusline never runs repository commands.
+
+Fujutsu detects the active statusline automatically, including late-loaded setups:
+
+- **lualine:** replaces configured `branch` components with `fujutsu_branch`
+  in-place, including configured inactive sections and inline extensions. It
+  preserves component placement, icons, formatting, colors, conditions, and
+  padding, and delegates to the original Git branch component outside jj.
+  The jj markers replace the default Git branch icon; Git fallback keeps ``.
+  An explicitly configured `icon` is still respected, in addition to the marker.
+  The markers are ordinary Unicode and do not require a Nerd Font.
+  Nothing is added to the filename section. If a layout has no branch component,
+  add `'fujutsu_branch'` wherever you want its VC segment.
+- **Native or other/custom statuslines:** retains the existing format or `%!`
+  expression and appends the context to its result for jj working-copy and
+  historical buffers. This also supports expression-based providers such as mini.statusline,
+  heirline, lightline, feline, and airline without force-loading them. Their
+  configuration tables are not changed.
+
+For custom statusline layouts, `require('fujutsu.status').label()` returns the
+plain label (or an empty string). A native statusline expression using this
+function is detected and not automatically decorated a second time:
+
+```lua
+vim.opt.statusline:append(" %{v:lua.require('fujutsu.status').label()}")
+```
+
+With a global statusline, only the active window's context is shown. Fujutsu does
+not create or modify winbars.
 
 ## Writing historical files
 
@@ -175,8 +243,8 @@ not unsaved contents in another buffer.
 
 ## Commit descriptions
 
-Enter on a commit row opens its description in a writable, `gitcommit`-highlighted
-split. `:write` / `:Jwrite` call `jj describe` for the latest unique visible
+Enter on a commit row visits its description in a writable, `gitcommit`-highlighted
+editing window. `:write` / `:Jwrite` call `jj describe` for the latest unique visible
 version of that change. Concurrent file-only rewrites are allowed; changed
 descriptions require bang. Readonly, abandoned/divergent changes, immutable
 revisions, and unsaved workspace buffers follow historical-write safeguards.
@@ -214,8 +282,11 @@ Oil or netrw), without changing Neovim's current directory.
 In historical files, `-` opens a read-only directory listing **in the same pinned
 revision**, not the working-copy directory and not a filesystem interpretation of
 the virtual URI. Enter opens the selected file or subdirectory; `-` ascends again.
-Counts ascend multiple levels. At the revision's root, `-` stays there rather than
-switching revisions (unlike Fugitive's traversal onward through commit ancestry).
+Counts ascend multiple directory levels, stopping at the revision's root. From
+that root listing, `-` returns to the repository log in the current window,
+reusing an existing log buffer and focusing the owning revision when it is in
+the configured log view. It does not switch revisions or silently choose a
+merge's first parent; `Ctrl-O` can return to the directory listing.
 Synthetic merged-parent listings contain only the diff's old-side changed paths;
 they remain non-writable and never substitute a single parent revision.
 
@@ -235,11 +306,15 @@ nvim --headless -u NONE -l tests/run.lua
 nvim --headless -u NONE -l tests/edit.lua
 nvim --headless -u NONE -l tests/safety.lua
 nvim --headless -u NONE -l tests/parents.lua
+nvim --headless -u NONE -l tests/windows.lua
+nvim --headless -u NONE -l tests/status.lua
 ```
 
 Tests create and remove temporary jj repositories; no plugin test dependencies
 are needed. To exercise parent navigation with Oil's actual directory handler,
 run `tests/parents.lua` with `FUJUTSU_TEST_OIL=/path/to/oil.nvim`.
+For real lualine integration, run `tests/status.lua` with
+`FUJUTSU_TEST_LUALINE=/path/to/lualine.nvim`.
 
 ## License
 

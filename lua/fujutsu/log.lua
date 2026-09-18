@@ -272,11 +272,13 @@ function M.new(root, jj)
     return row
   end
 
-  function state.visit(buf)
+  function state.visit(buf, command)
+    command = command or 'edit'
     local row = state.selection(buf)
     local file = require('fujutsu.file')
     if not row.path then
-      file.open(root, row.id, 'description', { description = true, readonly = false, explicit = true })
+      file.open(root, row.id, 'description', { description = true, readonly = false, explicit = true,
+        command = command })
       return
     end
     local old = row.old_side or row.deleted
@@ -292,7 +294,7 @@ function M.new(root, jj)
       if #parents == 1 then id = parents[1] else base = true end
     end
     file.open(root, id, path, { base = base, explicit = true, workspace = not old and row.entry.working_copy,
-      line = old and row.old_line or row.new_line })
+      command = command, line = old and row.old_line or row.new_line })
   end
 
   function state.toggle(buf)

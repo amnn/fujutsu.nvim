@@ -2,6 +2,7 @@ if vim.g.loaded_fujutsu then
   return
 end
 vim.g.loaded_fujutsu = true
+require('fujutsu.status').setup()
 
 -- URI-wide readers survive buffer unload/delete and jump-list restoration.
 -- Buffer-local readers alone disappear with the buffer they need to restore.
