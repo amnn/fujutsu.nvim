@@ -83,12 +83,12 @@ operations, even when the underlying jj operation is `diffedit`.
 
 ### 5. Add restorative `Jread`
 
-- [ ] Add `:Jread` to read a selected file version into the current buffer as a
+- [x] Add `:Jread` to read a selected file version into the current buffer as a
   restorative operation, following Vim/Fugitive read conventions.
-- [ ] Define and document its precise range/insertion/replacement behavior and
+- [x] Define and document its precise range/insertion/replacement behavior and
   revision/file defaults before implementation; share revision/path resolution
   where appropriate.
-- [ ] Reading changes buffer contents, not repository history; persist through
+- [x] Reading changes buffer contents, not repository history; persist through
   the destination buffer's normal write path. Preserve undo and modified-buffer
   semantics, and test restoration from historical versions.
 

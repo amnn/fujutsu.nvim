@@ -51,6 +51,22 @@ function M.open(command, readonly, opts)
     readonly = readonly, mods = opts.smods })
 end
 
+function M.read(opts)
+  if not vim.bo.modifiable then error('Buffer is not modifiable', 0) end
+  local root, id, path = M.select(opts.fargs)
+  local content = file.content(root, id, path)
+  local whole = opts.range == 0 or (opts.range == 2 and opts.line1 == 1
+    and opts.line2 == vim.api.nvim_buf_line_count(0))
+  if whole then
+    file.set_content(0, content)
+  else
+    local lines = vim.split(content:gsub('\n$', ''), '\n', { plain = true })
+    if content == '' then lines = {} end
+    local start = opts.range == 1 and opts.line2 or opts.line1 - 1
+    vim.api.nvim_buf_set_lines(0, start, opts.line2, false, lines)
+  end
+end
+
 function M.complete(lead, line)
   if line:match('%s%-r%s+[^%s]*$') then
     local root = vim.b.fujutsu_repo or vim.fn.getcwd()

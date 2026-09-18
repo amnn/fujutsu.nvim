@@ -19,6 +19,12 @@ for name, command in pairs({ Jedit = 'edit', Jview = 'edit', Jsplit = 'split',
   end, desc = 'Open a workspace or historical file' })
 end
 
+vim.api.nvim_create_user_command('Jread', function(opts)
+  require('fujutsu.commands').read(opts)
+end, { nargs = '*', range = true, complete = function(...)
+  return require('fujutsu.commands').complete(...)
+end, desc = 'Restore or insert a file version into this buffer' })
+
 vim.api.nvim_create_user_command('Jwrite', function(opts)
   local flags = { bang = opts.bang }
   for _, arg in ipairs(opts.fargs) do

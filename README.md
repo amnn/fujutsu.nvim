@@ -155,6 +155,21 @@ respectively, including command modifiers and modified-buffer safeguards.
 These commands select writable buffers, including when reusing a readonly
 buffer; that option change is shared by all its windows.
 
+### Restoring buffer contents
+
+`:Jread [-r R] [file]` replaces the entire current buffer with the selected
+version (revision defaults to `@`; filename defaults match `Jedit`). Unlike
+plain Vim `:read`, this no-range form is restorative. `:NJread` inserts after
+line N (`:0Jread` prepends); `:N,MJread` replaces those inclusive lines, and
+`:%Jread` replaces the whole buffer. Insertions/ranged replacements retain the
+destination's final-newline setting; whole-buffer restoration adopts the source's.
+
+Reading never rewrites history, clears readonly, or changes file identity. It is
+undoable and marks the destination modified; readonly buffers may still be
+edited, while nomodifiable buffers reject reads. Save using the destination's
+normal write command and safeguards. `@` reads the snapshotted on-disk version,
+not unsaved contents in another buffer.
+
 ## Tests
 
 With Neovim and jj installed, run from the checkout:
