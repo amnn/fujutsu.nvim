@@ -17,6 +17,7 @@ function M.header(log, root, jj)
       rows[#lines] = { kind = 'mark', register = name }
     end
   end
+  if log.pinned and not log.marks[log.pinned] then log.pinned = nil end
   lines[#lines + 1], rows[#lines + 1] = '', { kind = 'margin' }
   return lines, rows
 end
