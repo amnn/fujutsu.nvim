@@ -111,8 +111,14 @@ function M.new(root, jj)
       .. 'f.status_char(), f.lines_added(), f.lines_removed(), json(f.display_diff_path()), json(f.path()))'
       .. ' ++ "\x1f\n"' .. diffs .. ').join("") ++ "\x1eMARGIN\x1f\n") ++ "\x1eEND\x1f\n"'
     -- Wrapping must happen in the editor, not through our metadata markers.
-    local output = jj(root, { '--config', 'ui.log-word-wrap=false', 'log', '-T', template }, true)
+    state.query = state.query or vim.trim(jj(root, { 'config', 'get', 'revsets.log' }))
+    local args = { '--config', 'ui.log-word-wrap=false', 'log', '-r', state.query, '-T', template }
+    if state.limit then vim.list_extend(args, { '-n', state.limit }) end
+    local output = jj(root, args, true)
+    vim.b[buf].fujutsu_query, vim.b[buf].fujutsu_limit = state.query, state.limit
     local lines, rows = require('fujutsu.log_ui').header(state, root, jj)
+    table.insert(lines, 1, 'Query: ' .. vim.fn.strtrans(state.query) .. (state.limit and '  [limit ' .. state.limit .. ']' or ''))
+    table.insert(rows, 1, { kind = 'query' })
     local entry
     local file_row, diff_row, in_hunk, old_line, new_line
     local highlights, words = {}, {}
@@ -276,6 +282,11 @@ function M.new(root, jj)
 
   function state.visit(buf, command)
     command = command or 'edit'
+    local current = state.rows[vim.fn.line('.')]
+    if current and current.kind == 'query' then
+      require('fujutsu.log_ui').edit_query(state, buf)
+      return
+    end
     local row = state.selection(buf)
     local file = require('fujutsu.file')
     assert(row.id or row.entry, 'Select a commit or file')

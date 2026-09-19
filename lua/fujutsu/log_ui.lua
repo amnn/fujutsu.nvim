@@ -96,4 +96,28 @@ function M.attach(log, buf, root)
     callback = function() vim.api.nvim_del_augroup_by_id(group) end })
 end
 
+function M.edit_query(log, target)
+  local buf = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_set_name(buf, 'fujutsu-query://' .. buf)
+  vim.bo[buf].buftype, vim.bo[buf].bufhidden = 'nofile', 'wipe'
+  vim.bo[buf].swapfile = false
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, { log.query })
+  vim.cmd.sbuffer(buf)
+  local function accept()
+    local query = table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), ' ')
+    local old = log.query
+    log.query = query
+    local ok, err = pcall(log.refresh, target)
+    if not ok then
+      log.query = old
+      vim.notify(tostring(err), vim.log.levels.ERROR)
+      return
+    end
+    vim.api.nvim_buf_delete(buf, { force = true })
+  end
+  vim.keymap.set({ 'n', 'i' }, '<CR>', accept, { buffer = buf, desc = 'Apply log query' })
+  vim.keymap.set('n', '<Esc>', function() vim.api.nvim_buf_delete(buf, { force = true }) end,
+    { buffer = buf, desc = 'Cancel query edit' })
+end
+
 return M

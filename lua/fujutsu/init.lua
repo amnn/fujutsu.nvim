@@ -72,6 +72,7 @@ function M.read_log(buf, root)
     try_refresh(buf)
   else
     log = require('fujutsu.log').new(root, jj)
+    log.query, log.limit = vim.b[buf].fujutsu_query, vim.b[buf].fujutsu_limit
     log.refresh(buf)
     logs[buf] = log
     vim.api.nvim_create_autocmd('BufWipeout', {
@@ -129,7 +130,7 @@ function M.open(opts)
   root = vim.uv.fs_realpath(root) or root
 
   -- Explicit :tab always requests a new tab; otherwise reuse this tab's log.
-  if not (mods.tab and mods.tab >= 0) then
+  if not opts.new_log and not (mods.tab and mods.tab >= 0) then
     for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
       local buf = vim.api.nvim_win_get_buf(win)
       if logs[buf] and vim.b[buf].fujutsu_repo == root then
@@ -154,6 +155,7 @@ function M.open(opts)
   end
   local buf = vim.api.nvim_create_buf(false, true)
   vim.api.nvim_buf_set_name(buf, require('fujutsu.uri').name(root, 'log', tostring(buf)))
+  vim.b[buf].fujutsu_query, vim.b[buf].fujutsu_limit = opts.query, opts.limit
   local ready, message = pcall(M.read_log, buf, root)
   if not ready then
     vim.api.nvim_buf_delete(buf, { force = true })
@@ -169,6 +171,14 @@ function M.open(opts)
   vim.wo.wrap = false
   focus_revision(buf, opts.revision)
 end
+
+function M.refresh_root(root)
+  for buf in pairs(logs) do
+    if vim.api.nvim_buf_is_loaded(buf) and vim.b[buf].fujutsu_repo == root then try_refresh(buf) end
+  end
+end
+
+function M.log(buf) return logs[buf or vim.api.nvim_get_current_buf()] end
 
 function M.selection()
   local buf = vim.api.nvim_get_current_buf()

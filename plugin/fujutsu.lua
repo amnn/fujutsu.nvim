@@ -24,11 +24,11 @@ vim.api.nvim_create_autocmd('BufWriteCmd', {
 })
 
 vim.api.nvim_create_user_command('J', function(opts)
-  local ok, err = pcall(require('fujutsu').open, opts)
+  local ok, err = pcall(require('fujutsu.commands').execute, opts)
   if not ok then
     vim.notify(tostring(err), vim.log.levels.ERROR, { title = 'fujutsu' })
   end
-end, { desc = 'Open the Jujutsu log' })
+end, { nargs = '*', desc = 'Open a log or run a Jujutsu command' })
 
 for name, command in pairs({ Jedit = 'edit', Jview = 'edit', Jsplit = 'split',
   Jvsplit = 'vsplit', Jtabedit = 'tabedit', Jpedit = 'pedit', Jdrop = 'drop' }) do

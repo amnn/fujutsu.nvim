@@ -56,6 +56,30 @@ as Neovim highlights, with paging and log word wrapping disabled. The first 16 c
 `g:terminal_color_0` through `g:terminal_color_15` when set.
 Commands run synchronously; large repositories may briefly block the editor.
 
+## Marks and log queries
+
+`m` replaces the unnamed revision mark, `M` adds to it, and `d` removes
+contextual commits. These also accept Visual selections and register prefixes:
+`"am`, `"aM` (or `"Am`), and `"ad`. Marks contain commit sets, not partial
+patches, and are stored as ordinary `change_id(...) | change_id(...)` text.
+Normal yanks are unchanged and can replace the unnamed mark.
+
+The Marks section lists valid non-empty marks. On a mark row, `d` clears it
+and Space pins/unpins its gutter. Hover previews that mark; modifications
+briefly preview the affected mark. Otherwise the pinned or unnamed mark is
+shown. Pinning never changes which register a command modifies.
+
+Every log shows its effective Query. Enter on that row opens an editor;
+Enter applies it, normal-mode Escape cancels. Invalid queries remain editable.
+`:J log -r 'REVSET' [-n LIMIT]` opens a separate query-specific log.
+
+`:J COMMAND ...` executes jj asynchronously without a shell. Single/double
+quotes group arguments; use native command-line `<C-r>a` to insert a mark,
+for example `:J rebase -r '<C-r>a' -o main`. Commands that request a text
+editor open one inside Neovim: `:write` accepts, normal-mode Escape cancels.
+Save modified workspace buffers before repository commands. Avoid simultaneous
+external jj mutations while an operation is running.
+
 ## Colors
 
 Plugin-owned stats use theme highlights rather than the terminal ANSI palette:
