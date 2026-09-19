@@ -76,6 +76,26 @@ function M.new(root, jj)
   end
 
   function state.refresh(buf)
+    local cursors = {}
+    for _, win in ipairs(vim.fn.win_findbuf(buf)) do
+      local cursor = vim.api.nvim_win_get_cursor(win)
+      cursors[win] = { row = state.rows[cursor[1]], cursor = cursor }
+    end
+    local lines, rows = require('fujutsu.log_ui').header(state, root, jj)
+    -- Expansion follows uniquely visible changes across rewrites, not obsolete
+    -- commit hashes. Working-copy expansion retains its special @ identity.
+    for _, row in pairs(state.rows) do
+      local entry = row.entry or row
+      local latest = entry.change and state.catalog[entry.change]
+      if latest and latest ~= entry.id then
+        if state.expanded[entry.id] ~= nil then
+          state.expanded[latest], state.expanded[entry.id] = state.expanded[entry.id], nil
+        end
+        if state.files[entry.id] then
+          state.files[latest], state.files[entry.id] = state.files[entry.id], nil
+        end
+      end
+    end
     local predicate = state.working_copy and 'current_working_copy' or 'false'
     for id, expanded in pairs(state.expanded) do
       if expanded then
@@ -116,7 +136,6 @@ function M.new(root, jj)
     if state.limit then vim.list_extend(args, { '-n', state.limit }) end
     local output = jj(root, args, true)
     vim.b[buf].fujutsu_query, vim.b[buf].fujutsu_limit = state.query, state.limit
-    local lines, rows = require('fujutsu.log_ui').header(state, root, jj)
     table.insert(lines, 1, 'Query: ' .. vim.fn.strtrans(state.query) .. (state.limit and '  [limit ' .. state.limit .. ']' or ''))
     table.insert(rows, 1, { kind = 'query' })
     local entry
@@ -179,7 +198,7 @@ function M.new(root, jj)
           if in_hunk and old_line then
             row = vim.tbl_extend('force', {}, diff_row, {
               old_line = old_line, new_line = new_line,
-              old_side = patch:sub(1, 1) == '-', hunk = patch:match('^@@') ~= nil,
+              old_side = patch:sub(1, 1) == '-', hunk = patch:match('^@@') ~= nil, patch = patch,
             })
             local prefix = patch:sub(1, 1)
             if prefix == '-' or prefix == ' ' then old_line = old_line + 1 end
@@ -196,7 +215,7 @@ function M.new(root, jj)
               removed = file.removed == 0 and 0 or #tostring(file.removed) + 1,
             }
           else
-            file_row = { entry = entry, path = file.target, deleted = file.status == 'D', first = #lines + 1 }
+            file_row = { entry = entry, path = file.target, status = file.status, deleted = file.status == 'D', first = #lines + 1 }
             row = file_row
           end
           stat_text, stat_spans = stat(file, entry.widths)
@@ -242,6 +261,23 @@ function M.new(root, jj)
       })
     end
     state.rows = rows
+    for win, saved in pairs(cursors) do
+      if vim.api.nvim_win_is_valid(win) and saved.row then
+        local old = saved.row
+        local owner = old.entry or old
+        local best
+        for i, row in pairs(rows) do
+          local entry = row.entry or row
+          if old.kind and old.kind == row.kind and old.register == row.register then best = i; break end
+          if owner.change and owner.change == entry.change then
+            if i == entry.first and not best then best = i end
+            if old.path == row.path and old.patch == row.patch and old.new_line == row.new_line
+              and old.old_line == row.old_line and (old.path or i == entry.first) then best = i; break end
+          end
+        end
+        if best then vim.api.nvim_win_set_cursor(win, { best, 0 }) end
+      end
+    end
     require('fujutsu.log_ui').draw(state, buf)
   end
 

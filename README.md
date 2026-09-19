@@ -88,6 +88,16 @@ changes into a new commit inserted immediately before their source. `X` is
 unassigned. Parent ambiguity and invalid multi-source combinations follow jj's
 errors, not a plugin-selected first parent.
 
+For lowercase actions, a file row selects the entire file; a hunk header or
+diff line selects its hunk. Visual selection within one diff selects changed
+lines (whole lines, even in characterwise Visual mode). Added and removed lines
+can be selected independently. Context lines do not move. Mixed scopes,
+blockwise selections, and partial selections spanning files/commits are
+rejected. Visual selections of file rows within one commit are supported.
+Binary/rename/symlink changes require whole-file selection; conflicted revisions
+must be resolved before selecting partial lines. Final-newline changes that
+cannot be represented independently require selecting the paired change too.
+
 Emptied sources are abandoned, including whole-commit extraction. jj creates a
 fresh empty working-copy commit when `@` is abandoned. Combined descriptions
 are edited inside Neovim with `:write` to accept and Escape to cancel the

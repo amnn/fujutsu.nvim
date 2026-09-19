@@ -18,7 +18,7 @@ end
 
 function M.catalog(root, jj)
   local visible = {}
-  local text = jj(root, { '--ignore-working-copy', 'log', '--no-graph', '-r', 'all()',
+  local text = jj(root, { 'log', '--no-graph', '-r', 'all()',
     '-T', 'change_id ++ "\\t" ++ commit_id ++ "\\n"' })
   for change, commit in text:gmatch('([k-z]+)\t(%x+)\n') do
     visible[change] = visible[change] == nil and commit or false

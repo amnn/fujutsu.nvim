@@ -74,11 +74,17 @@ function M.squash(log, buf, root, selected, key, reg)
   else
     vim.list_extend(args, { '-r', table.concat(contextual, ' | ') })
   end
+  local cleanup
   if key ~= 'S' then
-    local row = selected.rows[selected.first]
-    assert(not row.path, 'Partial patch operations are not installed yet')
+    local patch = require('fujutsu.patch')
+    args, cleanup = patch.prepare(root, patch.scope(log, selected), args)
   end
-  return runner.run(root, args)
+  local ok, result = pcall(runner.run, root, args, { done = function() if cleanup then cleanup() end end })
+  if not ok then
+    if cleanup then cleanup() end
+    error(result, 0)
+  end
+  return result
 end
 
 function M.attach(log, buf, root)
