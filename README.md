@@ -54,7 +54,9 @@ is reused. Logs in other tabs are never focused automatically.
 The view uses your configured `jj log` defaults, preserving ANSI colors and styles
 as Neovim highlights, with paging and log word wrapping disabled. The first 16 colors use
 `g:terminal_color_0` through `g:terminal_color_15` when set.
-Commands run synchronously; large repositories may briefly block the editor.
+Log rendering and validation run synchronously; large repositories may briefly
+block the editor. Repository actions run asynchronously, with a per-repository
+lock while jj or its internal description editor is active.
 
 ## Marks and log queries
 
@@ -387,6 +389,12 @@ nvim --headless -u NONE -l tests/safety.lua
 nvim --headless -u NONE -l tests/parents.lua
 nvim --headless -u NONE -l tests/windows.lua
 nvim --headless -u NONE -l tests/status.lua
+nvim --headless -u NONE -l tests/marks.lua
+nvim --headless -u NONE -l tests/log_actions.lua
+nvim --headless -u NONE -l tests/rebase.lua
+nvim --headless -u NONE -l tests/squash.lua
+nvim --headless -u NONE -l tests/patch.lua
+nvim --headless -u NONE -l tests/create.lua
 ```
 
 Tests create and remove temporary jj repositories; no plugin test dependencies

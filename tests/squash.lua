@@ -57,6 +57,34 @@ assert(vim.wait(10000, function() return job.result ~= nil end, 20))
 assert(job.result.code == 0, job.result.stderr)
 assert(jj({ 'log', '--no-graph', '-r', '@-', '-T', 'description' }) == 'extract description')
 print('PASS: squash descriptions, cancellation atomicity, empty-source abandonment and full extraction')
+-- Multiple marked commits squash into the cursor, with all descriptions kept
+-- in the editor draft and all emptied sources abandoned.
+local sources = {}
+for _, name in ipairs({ 'one', 'two' }) do
+  jj({ 'new', 'root()', '-m', name .. ' description' })
+  vim.fn.writefile({ name }, dir .. '/' .. name)
+  sources[#sources + 1] = jj({ 'log', '--no-graph', '-r', '@', '-T', 'change_id' })
+end
+jj({ 'new', 'root()', '-m', 'target description' })
+require('fujutsu.marks').modify('a', 'replace', sources)
+vim.api.nvim_set_current_buf(buf); focus_wc()
+job = actions.squash(log, buf, dir, require('fujutsu.selection').capture(log, false), 'S', 'a')
+assert(vim.wait(10000, function() return job.editor ~= nil end, 20))
+content = table.concat(vim.api.nvim_buf_get_lines(job.editor, 0, -1, false), '\n')
+for _, word in ipairs({ 'one description', 'two description', 'target description' }) do
+  assert(content:find(word, 1, true))
+end
+assert(not pcall(require('fujutsu.runner').guard, dir), 'Pending editor must lock repository writes')
+vim.api.nvim_buf_set_lines(job.editor, 0, -1, false, { 'all descriptions combined' })
+vim.api.nvim_buf_call(job.editor, function() vim.cmd.write() end)
+assert(vim.wait(10000, function() return job.result ~= nil end, 20))
+assert(job.result.code == 0, job.result.stderr)
+assert(jj({ 'file', 'show', '-r', '@', 'one' }) == 'one')
+assert(jj({ 'file', 'show', '-r', '@', 'two' }) == 'two')
+for _, source in ipairs(sources) do
+  assert(jj({ 'log', '--no-graph', '-r', 'change_id(' .. source .. ') & all()', '-T', 'commit_id' }) == '')
+end
+print('PASS: multiple register sources, combined descriptions and editor-time repository lock')
 vim.cmd.cd('/')
 vim.fn.delete(dir, 'rf')
 vim.cmd.qa({ bang = true })

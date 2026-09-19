@@ -45,7 +45,10 @@ function M.scope(log, selected)
   assert(first, 'No changes selected')
   if not selected.visual then
     if not first.path then return { kind = 'commits' } end
-    if not first.old_line then return { kind = 'files', paths = { first.path } } end
+    if not first.old_line then
+      return { kind = 'files', paths = { first.path }, owner = first.entry.id,
+        renames = first.status == 'R' and { [first.path] = true } or {} }
+    end
     local start = selected.first
     while start > 1 and not log.rows[start].hunk do
       start = start - 1
@@ -59,7 +62,7 @@ function M.scope(log, selected)
     end
     return { kind = 'lines', row = first, rows = rows }
   end
-  local kind, owner, path, rows, paths, seen = nil, nil, nil, {}, {}, {}
+  local kind, owner, path, rows, paths, seen, renames = nil, nil, nil, {}, {}, {}, {}
   for i = selected.first, selected.last do
     local row = selected.rows[i]
     if row and (row.id or row.entry) then
@@ -75,11 +78,12 @@ function M.scope(log, selected)
           rows[#rows + 1] = row
         elseif not seen[row.path] then
           paths[#paths + 1], seen[row.path] = row.path, true
+          if row.status == 'R' then renames[row.path] = true end
         end
       end
     end
   end
-  return { kind = kind, paths = paths, row = first, rows = rows }
+  return { kind = kind, paths = paths, row = first, rows = rows, owner = owner, renames = renames }
 end
 
 -- Configure a non-interactive diff editor that presents precisely the selected
@@ -87,6 +91,17 @@ end
 function M.prepare(root, scope, args)
   if scope.kind == 'commits' then return args end
   if scope.kind == 'files' then
+    -- jj's fileset matcher selects tree paths, not a rendered rename pair.
+    -- Include the old path too or a whole-file rename becomes only an addition.
+    if next(scope.renames or {}) then
+      local pairs_ = file.jj(root, { '--ignore-working-copy', 'diff', '-r', scope.owner, '-T',
+        'json(source.path()) ++ "\\t" ++ json(target.path()) ++ "\\n"' })
+      for source, target in pairs_:gmatch('([^\n]+)\t([^\n]+)\n') do
+        if scope.renames[vim.json.decode(target)] then
+          scope.paths[#scope.paths + 1] = vim.json.decode(source)
+        end
+      end
+    end
     table.insert(args, '--')
     for _, path in ipairs(scope.paths) do args[#args + 1] = 'root-file:' .. vim.json.encode(path) end
     return args
