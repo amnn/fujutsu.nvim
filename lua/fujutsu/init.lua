@@ -107,6 +107,7 @@ function M.read_log(buf, root)
     local success, message = pcall(log.toggle, buf)
     if not success then vim.notify(message, vim.log.levels.ERROR) end
   end, { buffer = buf, silent = true, desc = 'Toggle revision stats or file diff' })
+  require('fujutsu.log_ui').attach(log, buf, root)
   vim.bo[buf].filetype = 'fujutsu'
 end
 

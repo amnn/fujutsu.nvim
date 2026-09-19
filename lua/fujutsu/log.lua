@@ -102,7 +102,7 @@ function M.new(root, jj)
     -- Markers provide revision ownership independently of graph glyphs, colors,
     -- abbreviated IDs, multiline descriptions, and the user's log template.
     -- Let jj draw the graph alongside file rows, including merges and forks.
-    local template = '"\x1eENTRY\t" ++ commit_id ++ "\t" ++ current_working_copy ++ "\x1f" ++ ('
+    local template = '"\x1eENTRY\t" ++ commit_id ++ "\t" ++ change_id ++ "\t" ++ current_working_copy ++ "\x1f" ++ ('
       .. configured .. ') ++ if(!stringify(' .. configured .. ').ends_with("\n"), "\n") ++ if('
       .. '(' .. predicate .. ') && diff.stat().files().len() > 0, '
       .. '"\n\x1eSTAT\t \t" ++ diff.stat().total_added() ++ "\t" ++ diff.stat().total_removed()'
@@ -112,7 +112,8 @@ function M.new(root, jj)
       .. ' ++ "\x1f\n"' .. diffs .. ').join("") ++ "\x1eMARGIN\x1f\n") ++ "\x1eEND\x1f\n"'
     -- Wrapping must happen in the editor, not through our metadata markers.
     local output = jj(root, { '--config', 'ui.log-word-wrap=false', 'log', '-T', template }, true)
-    local lines, rows, entry = {}, {}, nil
+    local lines, rows = require('fujutsu.log_ui').header(state, root, jj)
+    local entry
     local file_row, diff_row, in_hunk, old_line, new_line
     local highlights, words = {}, {}
     local removed, added = {}, {}
@@ -128,9 +129,9 @@ function M.new(root, jj)
       margin = false
       line = line:gsub('\30(.-)\31', function(marker)
         local clean = plain(marker)
-        local id, wc = clean:match('^ENTRY\t(%x+)\t(%a+)$')
+        local id, change, wc = clean:match('^ENTRY\t(%x+)\t([k-z]+)\t(%a+)$')
         if id then
-          entry = { id = id, working_copy = wc == 'true', first = #lines + 1 }
+          entry = { id = id, change = change, working_copy = wc == 'true', first = #lines + 1 }
           return ''
         elseif clean == 'END' then
           skip = true
@@ -235,6 +236,7 @@ function M.new(root, jj)
       })
     end
     state.rows = rows
+    require('fujutsu.log_ui').draw(state, buf)
   end
 
   function state.move(kind, direction, count)
@@ -276,6 +278,7 @@ function M.new(root, jj)
     command = command or 'edit'
     local row = state.selection(buf)
     local file = require('fujutsu.file')
+    assert(row.id or row.entry, 'Select a commit or file')
     if not row.path then
       file.open(root, row.id, 'description', { description = true, readonly = false, explicit = true,
         command = command })
@@ -299,7 +302,7 @@ function M.new(root, jj)
 
   function state.toggle(buf)
     local row = state.rows[vim.api.nvim_win_get_cursor(0)[1]]
-    if not row then return end
+    if not row or (not row.id and not row.entry) then return end
     local entry = row.entry or row
     local old, files
     if row.path then
