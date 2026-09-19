@@ -112,7 +112,17 @@ function M.create(log, buf, root, selected, key)
   end })
 end
 
+function M.history(root, command)
+  assert(command == 'undo' or command == 'redo', 'Expected undo or redo')
+  vim.notify('jj ' .. command .. ': repository operations, including external changes')
+  return runner.run(root, { command })
+end
+
 function M.attach(log, buf, root)
+  for key, command in pairs({ u = 'undo', ['<C-r>'] = 'redo' }) do
+    vim.keymap.set('n', key, protect(function() M.history(root, command) end),
+      { buffer = buf, desc = command .. ' repository operation' })
+  end
   for _, key in ipairs({ 'gn', 'gN', 'ge' }) do
     vim.keymap.set('n', key, protect(function()
       M.create(log, buf, root, selection.capture(log, false), key)

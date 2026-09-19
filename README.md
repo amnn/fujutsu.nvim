@@ -103,6 +103,13 @@ fresh empty working-copy commit when `@` is abandoned. Combined descriptions
 are edited inside Neovim with `:write` to accept and Escape to cancel the
 operation. Extraction preserves descriptions when abandoning their sources.
 
+## Repository undo and redo
+
+In a log, `u` runs `jj undo` and `<C-r>` runs `jj redo`. Native jj operation
+history includes external commands; marks, expansion and navigation do not
+create undo steps. jj reports the operation restored. These bindings do not
+change native text undo/redo in file or description buffers.
+
 ## Creating and checking out commits
 
 `gn` inserts an empty commit after context (child side) and edits it as `@`.
