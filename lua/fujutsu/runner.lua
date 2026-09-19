@@ -33,7 +33,7 @@ function M.run(root, args, opts)
 set -eu
 dir=$1
 shift
-printf '%s' "$1" > "$dir/request.tmp"
+printf '%s\n%s' "$$" "$1" > "$dir/request.tmp"
 mv "$dir/request.tmp" "$dir/request"
 while [ ! -f "$dir/done" ] && [ ! -f "$dir/cancel" ]; do sleep 0.05; done
 [ ! -f "$dir/cancel" ] || exit 1
@@ -43,15 +43,22 @@ rm -f "$dir/done" "$dir/request"
   local command = { 'jj', '--no-pager', '--color=never', '--config',
     'ui.editor=' .. vim.json.encode({ '/bin/sh', dir .. '/editor.sh', dir }) }
   vim.list_extend(command, args)
-  local job = { dir = dir, root = root, args = args }
+  local job = { dir = dir, root = root, args = args, cleanup = opts.cleanup }
   M.active[root] = job
   local timer = assert(vim.uv.new_timer())
   local function cancel()
-    if M.active[root] == job then vim.fn.writefile({ 'cancel' }, dir .. '/cancel') end
+    if M.active[root] == job then
+      job.cancelled = true
+      vim.fn.writefile({ 'cancel' }, dir .. '/cancel')
+    end
   end
   local function open_editor()
-    if job.editor or not vim.uv.fs_stat(dir .. '/request') then return end
-    local path = table.concat(vim.fn.readfile(dir .. '/request'), '\n')
+    if (job.editor and vim.api.nvim_buf_is_valid(job.editor)) or not vim.uv.fs_stat(dir .. '/request') then return end
+    local request = vim.fn.readfile(dir .. '/request')
+    local serial = table.remove(request, 1)
+    if job.request == serial then return end
+    job.request = serial
+    local path = table.concat(request, '\n')
     local buf = vim.api.nvim_create_buf(false, true)
     job.editor = buf
     vim.api.nvim_buf_set_name(buf, 'fujutsu-description://' .. buf)
@@ -70,6 +77,7 @@ rm -f "$dir/done" "$dir/request"
         local safe, message = pcall(M.guard, root)
         M.active[root] = active
         assert(safe, message)
+        file.resolve(root, '@') -- Also detect saved/on-disk edits during the dialog.
         assert(M.head(root) == expected, 'Repository changed while editing; cancel and retry')
         vim.fn.writefile(vim.api.nvim_buf_get_lines(buf, 0, -1, false), path)
         vim.fn.writefile({ 'done' }, dir .. '/done')
@@ -96,18 +104,22 @@ rm -f "$dir/done" "$dir/request"
     timer:stop(); timer:close()
     M.active[root] = nil
     vim.fn.delete(dir, 'rf')
+    if job.cleanup then job.cleanup() end
     job.result = result
     if job.editor and vim.api.nvim_buf_is_valid(job.editor) then
       vim.api.nvim_buf_delete(job.editor, { force = true })
     end
     require('fujutsu').invalidate(root)
+    require('fujutsu.status').repository_changed(root)
     local ok, err = pcall(function()
       vim.cmd('checktime')
       require('fujutsu').refresh_root(root)
       if opts.done then opts.done(result, expected) end
     end)
     if not ok then vim.notify(tostring(err), vim.log.levels.ERROR) end
-    if result.code ~= 0 then
+    if job.cancelled then
+      vim.notify('Jujutsu operation cancelled')
+    elseif result.code ~= 0 then
       vim.notify(vim.trim(result.stderr or 'jj failed'), vim.log.levels.ERROR)
     elseif not opts.quiet then
       local output = vim.trim((result.stdout or '') .. (result.stderr or ''))
@@ -121,6 +133,7 @@ vim.api.nvim_create_autocmd('VimLeavePre', { callback = function()
   for _, job in pairs(M.active) do
     vim.fn.writefile({ 'cancel' }, job.dir .. '/cancel')
     job.process:kill(15)
+    if job.cleanup then job.cleanup() end
   end
 end })
 

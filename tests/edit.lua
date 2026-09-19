@@ -156,8 +156,9 @@ local function test()
   log.move('revision', 1, 2)
   local revision = vim.fn.line('.')
   eq(revision, (log.rows[revision].entry or log.rows[revision]).first)
-  log.move('revision', -1, 999); eq(1, vim.fn.line('.'))
-  log.move('revision', -1, 1); eq(1, vim.fn.line('.'))
+  local first_revision = find(function(r) return r.id ~= nil end)
+  log.move('revision', -1, 999); eq(first_revision, vim.fn.line('.'))
+  log.move('revision', -1, 1); eq(first_revision, vim.fn.line('.'))
   vim.api.nvim_win_set_cursor(0, { find(function(r) return r.path == 'file.lua' end), 0 })
   -- Expand a file if necessary; movement itself never changes expansion.
   local has_hunk = false

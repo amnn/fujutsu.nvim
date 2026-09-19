@@ -79,7 +79,7 @@ function M.squash(log, buf, root, selected, key, reg)
     local patch = require('fujutsu.patch')
     args, cleanup = patch.prepare(root, patch.scope(log, selected), args)
   end
-  local ok, result = pcall(runner.run, root, args, { done = function() if cleanup then cleanup() end end })
+  local ok, result = pcall(runner.run, root, args, { cleanup = cleanup })
   if not ok then
     if cleanup then cleanup() end
     error(result, 0)

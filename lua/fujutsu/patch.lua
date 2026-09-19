@@ -113,6 +113,14 @@ right=$2
 path=$3
 payload=$4
 action=$5
+root=$6
+change=$7
+expected=$8
+check_revision() {
+  latest=$(jj --no-pager --color=never --ignore-working-copy -R "$root" log --no-graph -r "change_id($change) & all()" -T commit_id)
+  [ "$latest" = "$expected" ] || { echo 'Source changed; select the patch again' >&2; exit 1; }
+}
+check_revision
 [ ! -L "$right/$path" ] && [ ! -L "$left/$path" ] || exit 1
 if [ "$action" = remove ]; then
   rm -f -- "$right/$path"
@@ -126,11 +134,13 @@ else
   fi
   cat -- "$payload" > "$right/$path"
 fi
+check_revision
 ]]
   vim.fn.writefile(vim.split(script, '\n', { plain = true }), dir .. '/select.sh')
   local config = { '--config', 'merge-tools.fujutsu-select.program="/bin/sh"', '--config',
     'merge-tools.fujutsu-select.edit-args=' .. vim.json.encode({ dir .. '/select.sh', '$left', '$right',
-      row.path, dir .. '/content', row.status == 'D' and content == '' and 'remove' or 'write' }) }
+      row.path, dir .. '/content', row.status == 'D' and content == '' and 'remove' or 'write',
+      root, row.entry.change, row.entry.id }) }
   vim.list_extend(config, args)
   vim.list_extend(config, { '--tool', 'fujutsu-select', '--', 'root-file:' .. vim.json.encode(row.path) })
   return config, function() vim.fn.delete(dir, 'rf') end

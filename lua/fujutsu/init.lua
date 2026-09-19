@@ -72,6 +72,13 @@ function M.read_log(buf, root)
     try_refresh(buf)
   else
     log = require('fujutsu.log').new(root, jj)
+    local location = require('fujutsu.uri').parse(vim.api.nvim_buf_get_name(buf))
+    if not vim.b[buf].fujutsu_query and location.path ~= '' then
+      local saved = vim.json.decode(location.path)
+      assert(type(saved) == 'table' and type(saved.query) == 'string', 'Invalid saved log query')
+      assert(saved.limit == nil or (type(saved.limit) == 'string' and saved.limit:match('^%d+$')), 'Invalid saved log limit')
+      vim.b[buf].fujutsu_query, vim.b[buf].fujutsu_limit = saved.query, saved.limit
+    end
     log.query, log.limit = vim.b[buf].fujutsu_query, vim.b[buf].fujutsu_limit
     log.refresh(buf)
     logs[buf] = log

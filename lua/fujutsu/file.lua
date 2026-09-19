@@ -131,15 +131,7 @@ function M.check_write(buf, opts)
   assert(meta, 'Not a revision buffer')
   if meta.base then error('Merged-parent views have no writable revision target', 0) end
   local root = vim.b[buf].fujutsu_repo
-  for _, other in ipairs(vim.api.nvim_list_bufs()) do
-    if vim.api.nvim_buf_is_loaded(other) and vim.bo[other].buftype == '' and vim.bo[other].modified then
-      local name = vim.api.nvim_buf_get_name(other)
-      local real = vim.uv.fs_realpath(name) or name
-      if real:sub(1, #root + 1) == root .. '/' then
-        error('Save or discard unsaved workspace buffer first: ' .. name, 0)
-      end
-    end
-  end
+  require('fujutsu.runner').guard(root)
   -- Snapshot on-disk workspace changes before checking the target.
   M.resolve(root, '@')
   local id, fingerprint = M.target(root, meta)

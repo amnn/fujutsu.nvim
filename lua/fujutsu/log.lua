@@ -136,6 +136,13 @@ function M.new(root, jj)
     if state.limit then vim.list_extend(args, { '-n', state.limit }) end
     local output = jj(root, args, true)
     vim.b[buf].fujutsu_query, vim.b[buf].fujutsu_limit = state.query, state.limit
+    local uri = require('fujutsu.uri')
+    local name = vim.api.nvim_buf_get_name(buf)
+    if name:match('^fujutsu://') then
+      local location = uri.parse(name)
+      local updated = uri.name(root, 'log', location.id, vim.json.encode({ query = state.query, limit = state.limit }))
+      if name ~= updated then vim.api.nvim_buf_set_name(buf, updated) end
+    end
     table.insert(lines, 1, 'Query: ' .. vim.fn.strtrans(state.query) .. (state.limit and '  [limit ' .. state.limit .. ']' or ''))
     table.insert(rows, 1, { kind = 'query' })
     local entry

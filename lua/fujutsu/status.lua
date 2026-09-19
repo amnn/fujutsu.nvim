@@ -59,6 +59,11 @@ function M.track_workspace(buf)
   refresh_workspace(root, workspace)
 end
 
+function M.repository_changed(root)
+  local workspace = workspaces[root]
+  if workspace then refresh_workspace(root, workspace) end
+end
+
 function M.detect(value)
   for _, name in ipairs({ 'lualine', 'heirline', 'lightline', 'feline', 'airline' }) do
     if value:lower():find(name, 1, true) then return name end
