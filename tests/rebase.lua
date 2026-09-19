@@ -1,0 +1,57 @@
+vim.opt.runtimepath:prepend(vim.fn.getcwd())
+vim.cmd.runtime('plugin/fujutsu.lua')
+local dir = vim.fn.tempname()
+vim.fn.mkdir(dir, 'p')
+local function jj(args)
+  local r = vim.system(vim.list_extend({ 'jj', '--no-pager', '--color=never' }, args), { cwd = dir, text = true }):wait()
+  assert(r.code == 0, r.stderr)
+  return vim.trim(r.stdout)
+end
+local function id(rev, template) return jj({ 'log', '--no-graph', '-r', rev, '-T', template or 'commit_id' }) end
+jj({ 'git', 'init' })
+jj({ 'config', 'set', '--repo', 'user.name', 'Test' })
+jj({ 'config', 'set', '--repo', 'user.email', 'test@example.com' })
+for _, name in ipairs({ 'A', 'B', 'C' }) do
+  jj({ 'describe', '-m', name }); vim.fn.writefile({ name }, dir .. '/' .. name)
+  jj({ 'bookmark', 'create', name, '-r', '@' }); jj({ 'new' })
+end
+jj({ 'new', 'root()', '-m', 'destination' })
+jj({ 'bookmark', 'create', 'D' })
+vim.cmd.cd(dir)
+vim.cmd([[J log -r 'all()']])
+local buf = vim.api.nvim_get_current_buf()
+local log = require('fujutsu').log(buf)
+local marks = require('fujutsu.marks')
+marks.modify('a', 'replace', { id('A', 'change_id'), id('C', 'change_id') })
+log.refresh(buf)
+local function focus(rev)
+  local commit = id(rev)
+  for i, row in pairs(log.rows) do
+    if row.id == commit and row.first == i then vim.api.nvim_win_set_cursor(0, { i, 0 }); return end
+  end
+  error('No revision ' .. rev)
+end
+focus('D')
+local selected = require('fujutsu.selection').capture(log, false)
+local job = require('fujutsu.actions').rebase(log, buf, dir, selected, true, 'a', 'r', 'o')
+assert(vim.wait(10000, function() return job.result ~= nil end, 20))
+assert(job.result.code == 0, job.result.stderr)
+assert(id('parents(C)') == id('A'))
+assert(id('parents(A)') == id('D'))
+assert(id('B & ancestors(C)') == '')
+-- Multiple destination marks create a merged parent set.
+marks.modify('a', 'replace', { id('B', 'change_id'), id('C', 'change_id') })
+log.refresh(buf); focus('@')
+selected = require('fujutsu.selection').capture(log, false)
+-- Create an independent source, avoiding a cycle through D.
+jj({ 'new', 'root()', '-m', 'merge-source' })
+log.refresh(buf); focus('@')
+selected = require('fujutsu.selection').capture(log, false)
+job = require('fujutsu.actions').rebase(log, buf, dir, selected, false, 'a', 'r', 'o')
+assert(vim.wait(10000, function() return job.result ~= nil end, 20))
+assert(job.result.code == 0, job.result.stderr)
+assert(id('parents(@)', 'commit_id ++ "\\n"'):find('\n'))
+print('PASS: explicit revision ancestry, register-to-context rebases and multi-parent destinations')
+vim.cmd.cd('/')
+vim.fn.delete(dir, 'rf')
+vim.cmd.qa({ bang = true })

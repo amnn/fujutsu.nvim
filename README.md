@@ -80,6 +80,22 @@ editor open one inside Neovim: `:write` accepts, normal-mode Escape cancels.
 Save modified workspace buffers before repository commands. Avoid simultaneous
 external jj mutations while an operation is running.
 
+## Rebasing from the log
+
+Use `[rR][sbr][oAB]`: lowercase `r` takes its source from context and its
+other operand from a register; uppercase `R` takes registered sources and the
+contextual destination. The unnamed register is the default; `"aRro` uses `a`.
+Source modes are jj's source-and-descendants (`s`), branch (`b`), and explicit
+revisions (`r`). Placement is onto (`o`), insert-after (`A`), or insert-before
+(`B`). Multiple registered destinations are supported. Revision sets retain
+native jj topology; selection order does not create a stack.
+
+`r<Enter>` and `R<Enter>` complete with `bo`; `rs<Enter>` completes with `so`.
+Escape cancels the pending specification. Lowercase prompts for a destination
+only when the unnamed register is not a valid mark; its suggested base is
+`main`, configurable with `jj config set --repo fujutsu.rebase-base NAME`.
+Explicit invalid registers fail rather than falling back or using a subset.
+
 ## Colors
 
 Plugin-owned stats use theme highlights rather than the terminal ANSI palette:
