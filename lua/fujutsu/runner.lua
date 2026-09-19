@@ -5,12 +5,13 @@ local M = { active = {} }
 local file = require('fujutsu.file')
 
 function M.guard(root)
-  assert(not M.active[root], 'A Jujutsu operation is already running in this repository')
+  local real_root = vim.uv.fs_realpath(root) or root
+  assert(not M.active[root] and not M.active[real_root], 'A Jujutsu operation is already running in this repository')
   for _, buf in ipairs(vim.api.nvim_list_bufs()) do
     if vim.api.nvim_buf_is_loaded(buf) and vim.bo[buf].buftype == '' and vim.bo[buf].modified then
       local name = vim.api.nvim_buf_get_name(buf)
       local real = vim.uv.fs_realpath(name) or name
-      assert(real:sub(1, #root + 1) ~= root .. '/', 'Save or discard unsaved workspace buffer first: ' .. name)
+      assert(real:sub(1, #real_root + 1) ~= real_root .. '/', 'Save or discard unsaved workspace buffer first: ' .. name)
     end
   end
 end
@@ -21,6 +22,7 @@ end
 
 function M.run(root, args, opts)
   opts = opts or {}
+  root = vim.uv.fs_realpath(root) or root
   M.guard(root)
   -- Snapshot before freezing the operation identity used by pending editors.
   file.jj(root, { 'log', '--no-graph', '-r', '@', '-T', 'commit_id' })

@@ -87,7 +87,37 @@ function M.squash(log, buf, root, selected, key, reg)
   return result
 end
 
+function M.create(log, buf, root, selected, key)
+  runner.guard(root)
+  selection.validate(log, buf, selected)
+  local ids = M.ids(selected)
+  assert(#ids == 1, 'Select one contextual revision')
+  local known = vim.deepcopy(log.catalog)
+  local args = key == 'ge' and { 'edit', ids[1] }
+    or { 'new', key == 'gn' and '--insert-after' or '--insert-before', ids[1] }
+  if key == 'gN' then args[#args + 1] = '--no-edit' end
+  return runner.run(root, args, { done = function(result)
+    if result.code ~= 0 or key == 'ge' then return end
+    local current = marks.catalog(root, file.jj)
+    local created
+    for change, id in pairs(current) do
+      if known[change] == nil then
+        assert(not created, 'More than one new change; select its description in the log')
+        created = id
+      end
+    end
+    if created then
+      file.open(root, created, 'description', { description = true, explicit = true, readonly = false, command = 'edit' })
+    end
+  end })
+end
+
 function M.attach(log, buf, root)
+  for _, key in ipairs({ 'gn', 'gN', 'ge' }) do
+    vim.keymap.set('n', key, protect(function()
+      M.create(log, buf, root, selection.capture(log, false), key)
+    end), { buffer = buf, desc = key == 'ge' and 'Edit contextual revision' or 'Insert empty commit' })
+  end
   for _, key in ipairs({ 's', 'S', 'x' }) do
     for _, mode in ipairs({ 'n', 'x' }) do
       vim.keymap.set(mode, key, protect(function()

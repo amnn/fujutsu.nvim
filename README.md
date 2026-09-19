@@ -103,6 +103,15 @@ fresh empty working-copy commit when `@` is abandoned. Combined descriptions
 are edited inside Neovim with `:write` to accept and Escape to cancel the
 operation. Extraction preserves descriptions when abandoning their sources.
 
+## Creating and checking out commits
+
+`gn` inserts an empty commit after context (child side) and edits it as `@`.
+Existing children are rebased onto it. `gN` inserts before context (parent
+side) without moving `@`. Both open the new description for editing.
+`ge` runs `jj edit` on the owning revision without creating a commit.
+These operations protect unsaved workspace buffers and respect jj immutability.
+They do not implicitly move bookmarks.
+
 ## Rebasing from the log
 
 Use `[rR][sbr][oAB]`: lowercase `r` takes its source from context and its
