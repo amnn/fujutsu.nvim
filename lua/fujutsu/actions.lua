@@ -60,7 +60,37 @@ local function specification(upper)
   return mode, placement
 end
 
+function M.squash(log, buf, root, selected, key, reg)
+  runner.guard(root)
+  selection.validate(log, buf, selected)
+  local contextual = M.ids(selected)
+  local args = { 'squash' }
+  if key == 'S' then
+    local _, sources = marks.get(reg, log.catalog)
+    assert(sources, 'Register ' .. reg .. ' is not a valid revision mark')
+    vim.list_extend(args, { '--from', table.concat(sources, ' | '), '--into', table.concat(contextual, ' | ') })
+  elseif key == 'x' then
+    vim.list_extend(args, { '--from', table.concat(contextual, ' | '), '--insert-before', table.concat(contextual, ' | ') })
+  else
+    vim.list_extend(args, { '-r', table.concat(contextual, ' | ') })
+  end
+  if key ~= 'S' then
+    local row = selected.rows[selected.first]
+    assert(not row.path, 'Partial patch operations are not installed yet')
+  end
+  return runner.run(root, args)
+end
+
 function M.attach(log, buf, root)
+  for _, key in ipairs({ 's', 'S', 'x' }) do
+    for _, mode in ipairs({ 'n', 'x' }) do
+      vim.keymap.set(mode, key, protect(function()
+        local reg = vim.v.register
+        local selected = selection.capture(log, mode == 'x')
+        M.squash(log, buf, root, selected, key, reg)
+      end), { buffer = buf, desc = key == 'x' and 'Extract context before source' or 'Squash changes' })
+    end
+  end
   for _, key in ipairs({ 'r', 'R' }) do
     for _, mode in ipairs({ 'n', 'x' }) do
       vim.keymap.set(mode, key, protect(function()

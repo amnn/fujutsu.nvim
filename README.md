@@ -80,6 +80,19 @@ editor open one inside Neovim: `:write` accepts, normal-mode Escape cancels.
 Save modified workspace buffers before repository commands. Avoid simultaneous
 external jj mutations while an operation is running.
 
+## Squash and extraction
+
+`s` squashes contextual changes into their parent. `S` squashes the unnamed
+mark into the contextual commit (`"aS` uses mark `a`). `x` extracts contextual
+changes into a new commit inserted immediately before their source. `X` is
+unassigned. Parent ambiguity and invalid multi-source combinations follow jj's
+errors, not a plugin-selected first parent.
+
+Emptied sources are abandoned, including whole-commit extraction. jj creates a
+fresh empty working-copy commit when `@` is abandoned. Combined descriptions
+are edited inside Neovim with `:write` to accept and Escape to cancel the
+operation. Extraction preserves descriptions when abandoning their sources.
+
 ## Rebasing from the log
 
 Use `[rR][sbr][oAB]`: lowercase `r` takes its source from context and its
