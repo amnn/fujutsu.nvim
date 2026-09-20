@@ -144,13 +144,8 @@ rm -f "$dir/done" "$dir/request"
     diagnostics.record(root, { command = 'jj ' .. table.concat(args, ' '), code = result.code,
       stdout = result.stdout, stderr = result.stderr, cancelled = job.cancelled })
     if not opts.quiet then
-      local output = diagnostics.plain((result.stdout or '') .. (result.stderr or ''))
-      local warning = output:find('Warning:', 1, true) or output:lower():find('conflict', 1, true)
-        or output:lower():find('diverg', 1, true)
-      local status = job.cancelled and 'cancelled' or result.code ~= 0 and 'failed — :checkhealth jj'
-        or warning and 'completed with warnings — :checkhealth jj' or 'completed'
-      local level = not job.cancelled and (result.code ~= 0 and vim.log.levels.ERROR or warning and vim.log.levels.WARN) or nil
-      diagnostics.notice('jj ' .. cmd .. ': ' .. status, level)
+      local message, level = diagnostics.summary(cmd, result, job.cancelled, opts.label)
+      diagnostics.notice(message, level)
     end
   end
   local ok, process = pcall(vim.system, command, { cwd = root, text = true,
