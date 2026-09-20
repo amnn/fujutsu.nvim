@@ -21,7 +21,8 @@ vim.opt.runtimepath:prepend('/path/to/fujutsu.nvim')
 
 - `:J` opens `jj log` in a split and focuses it.
 - If the current tab already shows a log for the same repository, `:J` refreshes
-  and focuses that window instead. Logs for other repositories remain open.
+  and focuses that window instead. Explicit `:J log -r ...` likewise reuses a
+  matching query window in this tab. Logs for other repositories remain open.
 - `:tab J` opens the log in a new tab, even if the current tab already shows it.
   Identical repository/query views share a buffer, including expansion and pin state.
 - `:e` (or `:e!`) refreshes the current log buffer in place.
@@ -51,8 +52,10 @@ vim.opt.runtimepath:prepend('/path/to/fujutsu.nvim')
   proportion of added and removed lines using all five boxes for nonzero counts.
   A one-line deletion has five red boxes; zero-line metadata changes use gray.
   Zero counts are omitted; binary and empty-file changes remain visible.
-- Close a log window with `:q`. The read-only log stays hidden so jump-list
-  navigation can return to it; use `:bwipeout` to discard it explicitly.
+- Logs are listed while open, so normal buffer pickers can find them. Like
+  Fugitive's status buffer, closing the last window unloads/unlists the log
+  (`bufhidden=delete`). Jump-list navigation or reopening its URI reconstructs
+  it; expansion/pin state lasts only while the buffer remains loaded.
 
 The repository is resolved from the current file's directory, or the current
 working directory for unnamed/special buffers. From a log buffer, its repository
@@ -107,7 +110,11 @@ are comments in the editor. Each concurrent process owns its editor and cleanup.
 Save modified workspace buffers before commands that can rewrite working-copy
 files; read-only inspection remains available with unsaved buffers or editors.
 
-Operations report a single-line summary. `:checkhealth jj` shows bounded recent
+Operations report a single-line summary of native results (revision identity,
+working-copy movement, rebases or undo), with warnings/errors taking precedence.
+Extraction summaries say `Extract`; diagnostics retain the actual jj command.
+Lua source locations are omitted from notifications but retained in diagnostics.
+`:checkhealth jj` shows bounded recent
 command diagnostics grouped by workspace path (30 commands, up to 32 KiB per
 output stream). This is diagnostic output, not a second operation history;
 repository history and undo remain jj's responsibility.
@@ -135,6 +142,13 @@ Emptied sources are abandoned, including whole-commit extraction. jj creates a
 fresh empty working-copy commit when `@` is abandoned. Combined descriptions
 are edited inside Neovim: `:write` saves a draft, `:wq` saves and finishes,
 and normal-mode Escape cancels the operation. Extraction preserves descriptions when abandoning their sources.
+
+Partial single-source extraction uses `jj split -r SOURCE --insert-before SOURCE`
+with an empty description for the extracted part; the remainder keeps its original
+identity and description. Complete selections (including a file/hunk selection
+that exhausts a change) and multi-source extractions use `jj squash --insert-before`.
+Native split leaves an empty source instead of abandoning it; the squash fallback
+preserves abandonment, bookmark movement and single-operation undo semantics.
 
 ## Repository undo and redo
 
@@ -168,7 +182,10 @@ only when the unnamed register is not a valid mark; its suggested base is
 `main`, configurable with `jj config set --repo fujutsu.rebase-base NAME`.
 Explicit invalid registers fail rather than falling back or using a subset.
 The complete sequences are normal mappings with descriptions for tools such as
-which-key; the plugin does not present a separate key-sequence dialog.
+which-key; the plugin does not present a separate key-sequence dialog. If an
+incomplete prefix times out, installed which-key opens its mapping view; without
+which-key the incomplete sequence safely cancels rather than entering native
+Replace mode. Type the full sequence continuously when not using which-key.
 
 ## Colors
 
@@ -183,7 +200,7 @@ Plugin-owned stats use theme highlights rather than the terminal ANSI palette:
 | `FujutsuHeader` | `Label` | Marks and Query labels |
 | `FujutsuMark` | `Special` | Ordinary mark tokens and default gutter |
 | `FujutsuMarkPinned` | `DiagnosticInfo` | Pinned token and gutter |
-| `FujutsuMarkPreview` | `Search` | Previewed token and gutter |
+| `FujutsuMarkPreview` | `DiagnosticWarn` | Previewed token and gutter |
 | `FujutsuDiffAdd` | `DiffAdd` | Added diff lines |
 | `FujutsuDiffDelete` | `DiffDelete` | Removed diff lines |
 
@@ -362,7 +379,14 @@ not unsaved contents in another buffer.
 ## Commit descriptions
 
 Enter on a commit row visits its description in a writable, `gitcommit`-highlighted
-editing window. `:write` / `:Jwrite` call `jj describe` for the latest unique visible
+editing window. It includes your native `templates.draft_commit_description`
+context/status and `JJ:` save/quit/cancel instructions. Comments are not saved as
+part of the description. `:write` saves to jj immediately; `:wq` saves and closes.
+Normal-mode Escape discards unsaved edits and closes, but does not undo earlier
+saves. This differs from a pending command's editor, where `:write` only saves a
+draft until the editor closes.
+
+`:write` / `:Jwrite` call `jj describe` for the latest unique visible
 version of that change. Concurrent file-only rewrites are allowed; changed
 descriptions require bang. Readonly, abandoned/divergent changes, immutable
 revisions, and unsaved workspace buffers follow historical-write safeguards.
@@ -434,7 +458,15 @@ nvim --headless -u NONE -l tests/patch.lua
 nvim --headless -u NONE -l tests/create.lua
 nvim --headless -u NONE -l tests/concurrency.lua
 nvim --headless -u NONE -l tests/graph.lua
+nvim --headless -u NONE -l tests/feedback.lua
+nvim --headless -u NONE -l tests/diagnostics.lua
+nvim --headless -u NONE -l tests/extract.lua
+nvim --headless -u NONE -l tests/rebase_prefix.lua
 ```
+
+`tests/rebase_prefix.lua` uses an embedded Neovim to test real input pauses.
+Set `FUJUTSU_WHICH_KEY=/path/to/which-key.nvim` to also test popup continuation,
+Escape and explicit register preservation against the installed plugin.
 
 Tests create and remove temporary jj repositories; no plugin test dependencies
 are needed. To exercise parent navigation with Oil's actual directory handler,

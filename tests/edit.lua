@@ -183,7 +183,8 @@ local function test()
   eq(root .. '/.jj', vim.api.nvim_buf_get_name(0):gsub('/$', ''))
   eq(true, vim.fn.isdirectory(vim.api.nvim_buf_get_name(0)) == 1)
   eq(true, vim.api.nvim_buf_is_valid(logbuf)) -- Keep jump-list destinations alive.
-  eq('hide', vim.bo[logbuf].bufhidden)
+  eq(false, vim.api.nvim_buf_is_loaded(logbuf))
+  eq(false, vim.bo[logbuf].buflisted)
   print('PASS: log parent navigation opens this repository metadata directory')
 end
 local ok, err = xpcall(test, debug.traceback)

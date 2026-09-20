@@ -78,6 +78,13 @@ function M.set_content(buf, content)
   vim.bo[buf].fixendofline = false
 end
 
+function M.description_draft(root, id)
+  local template = vim.trim(M.jj(root, { 'config', 'get', 'templates.draft_commit_description' }))
+  return M.jj(root, { '--ignore-working-copy', 'log', '--no-graph', '-r', id, '-T', template })
+    .. '\nJJ: :write saves this description to jj; :wq saves and closes.\n'
+    .. 'JJ: Normal-mode Escape discards unsaved edits and closes; earlier saves remain.\n'
+end
+
 function M.read(buf, location)
   local root, id, path = location.root, location.id, location.path
   local description = location.kind == 'description'
@@ -88,7 +95,11 @@ function M.read(buf, location)
   vim.bo[buf].buftype = 'acwrite'
   vim.bo[buf].swapfile = false
   vim.bo[buf].modifiable = true
-  M.set_content(buf, content)
+  M.set_content(buf, description and M.description_draft(root, id) or content)
+  if description then
+    vim.keymap.set('n', '<Esc>', function() vim.cmd('bdelete!') end,
+      { buffer = buf, desc = 'Discard unsaved description edits and close' })
+  end
   vim.b[buf].fujutsu_repo = root
   vim.b[buf].fujutsu_file = { id = id, change = change, path = path, base = location.base,
     description = description, content = content,
@@ -188,8 +199,11 @@ latest=$(jj --no-pager --color=never --ignore-working-copy -R "$1" log --no-grap
     if not ok then error(err, 0) end
     local latest = M.new_id(root, meta)
     content = M.jj(root, { 'log', '--no-graph', '-r', latest, '-T', 'description' })
-    M.set_content(buf, content) -- jj normalizes description whitespace.
+    -- jj strips JJ: comments and normalizes whitespace. Keep that canonical
+    -- content for stale checks, but restore the native draft context in the UI.
     M.advance(buf, root, meta, content)
+    M.set_content(buf, M.description_draft(root, latest))
+    vim.bo[buf].modified = false
     return
   end
   local script = [[#!/bin/sh

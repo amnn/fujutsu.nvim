@@ -64,9 +64,9 @@ function M.read_log(buf, root)
   vim.b[buf].fujutsu_repo = root
   vim.b[buf].fujutsu_log = true
   vim.bo[buf].buftype = 'nowrite'
-  vim.bo[buf].bufhidden = 'hide'
+  vim.bo[buf].bufhidden = 'delete'
   vim.bo[buf].swapfile = false
-  vim.bo[buf].buflisted = false
+  vim.bo[buf].buflisted = true
   local log = logs[buf]
   if log then
     try_refresh(buf)
@@ -77,7 +77,7 @@ function M.read_log(buf, root)
     log.limit = vim.b[buf].fujutsu_limit or location.limit
     log.refresh(buf)
     logs[buf] = log
-    vim.api.nvim_create_autocmd('BufWipeout', {
+    vim.api.nvim_create_autocmd('BufDelete', {
       buffer = buf,
       once = true,
       callback = function()
@@ -136,10 +136,12 @@ function M.open(opts)
   root = vim.uv.fs_realpath(root) or root
 
   -- Explicit :tab always requests a new tab; otherwise reuse this tab's log.
-  if not opts.new_log and not (mods.tab and mods.tab >= 0) then
+  if not (mods.tab and mods.tab >= 0) then
     for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
       local buf = vim.api.nvim_win_get_buf(win)
-      if logs[buf] and vim.b[buf].fujutsu_repo == root then
+      if logs[buf] and vim.b[buf].fujutsu_repo == root
+        and (not opts.new_log or vim.api.nvim_buf_get_name(buf)
+          == require('fujutsu.uri').log_name(root, opts.query, opts.limit)) then
         refresh(buf)
         if opts.current_window then vim.cmd.buffer(buf)
         else vim.api.nvim_set_current_win(win) end

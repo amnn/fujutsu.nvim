@@ -35,10 +35,10 @@ function M.token(log)
 end
 
 function M.draw(log, buf)
-  if not vim.api.nvim_buf_is_valid(buf) then return end
+  if not vim.api.nvim_buf_is_loaded(buf) then return end
   vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
   for group, base in pairs({ FujutsuHeader = 'Label', FujutsuMark = 'Special',
-    FujutsuMarkPinned = 'DiagnosticInfo', FujutsuMarkPreview = 'Search' }) do
+    FujutsuMarkPinned = 'DiagnosticInfo', FujutsuMarkPreview = 'DiagnosticWarn' }) do
     vim.api.nvim_set_hl(0, group, { default = true, link = base })
   end
   local pinned = log.pinned
@@ -116,14 +116,14 @@ function M.attach(log, buf, root)
     end
   end
   local group = vim.api.nvim_create_augroup('fujutsu_marks_' .. buf, { clear = true })
-  local queued = false
+  local queued, attached = false, true
   local function update(force)
-    if queued or not vim.api.nvim_buf_is_valid(buf) or vim.api.nvim_get_current_buf() ~= buf then return end
+    if not attached or queued or not vim.api.nvim_buf_is_valid(buf) or vim.api.nvim_get_current_buf() ~= buf then return end
     if not force and log.register_signature == marks.signature() then M.draw(log, buf); return end
     queued = true
     vim.schedule(function()
       queued = false
-      if vim.api.nvim_buf_is_valid(buf) and vim.api.nvim_get_current_buf() == buf then
+      if attached and vim.api.nvim_buf_is_valid(buf) and vim.api.nvim_get_current_buf() == buf then
         local ok, err = pcall(log.refresh, buf)
         if not ok then diagnostics.error(err, root) end
       end
@@ -135,8 +135,11 @@ function M.attach(log, buf, root)
     if event.event == 'CmdlineLeave' then vim.schedule(function() update(false) end)
     else update(true) end
   end })
-  vim.api.nvim_create_autocmd('BufWipeout', { group = group, buffer = buf, once = true,
-    callback = function() vim.api.nvim_del_augroup_by_id(group) end })
+  vim.api.nvim_create_autocmd('BufDelete', { group = group, buffer = buf, once = true,
+    callback = function()
+      attached, log.preview_token = false, nil
+      vim.api.nvim_del_augroup_by_id(group)
+    end })
 end
 
 function M.edit_query(log, buf)
