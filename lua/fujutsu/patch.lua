@@ -89,8 +89,17 @@ end
 
 -- Configure a non-interactive diff editor that presents precisely the selected
 -- source tree to jj. The matcher restricts materialization to this single path.
+local function covers_files(root, owner, paths)
+  local selected = {}
+  for _, path in ipairs(paths) do selected[path] = true end
+  local all = vim.json.decode(file.jj(root, { '--ignore-working-copy', 'log', '--no-graph', '-r', owner,
+    '-T', 'json(diff.stat().files().map(|f| f.path()))' }))
+  for _, path in ipairs(all) do if not selected[path] then return false end end
+  return true
+end
+
 function M.prepare(root, scope, args)
-  if scope.kind == 'commits' then return args end
+  if scope.kind == 'commits' then return args, nil, true end
   if scope.kind == 'files' then
     -- jj's fileset matcher selects tree paths, not a rendered rename pair.
     -- Include the old path too or a whole-file rename becomes only an addition.
@@ -105,7 +114,7 @@ function M.prepare(root, scope, args)
     end
     table.insert(args, '--')
     for _, path in ipairs(scope.paths) do args[#args + 1] = 'root-file:' .. vim.json.encode(path) end
-    return args
+    return args, nil, covers_files(root, scope.owner, scope.paths)
   end
   assert(scope.kind == 'lines', 'No changes selected')
   local row = scope.row
@@ -119,6 +128,8 @@ function M.prepare(root, scope, args)
   local source = row.status == 'D' and '' or file.content(root, row.entry.id, row.path)
   assert(not base:find('\0', 1, true) and not source:find('\0', 1, true), 'Select the whole file for binary changes')
   local content = M.apply(base, source, scope.rows)
+  local complete = content == source and not diff:find('\nold mode ', 1, true)
+    and covers_files(root, row.entry.id, { row.path })
   local dir = vim.fn.tempname()
   vim.fn.mkdir(dir, 'p')
   local payload = assert(io.open(dir .. '/content', 'wb')); payload:write(content); payload:close()
@@ -159,7 +170,7 @@ check_revision
       root, row.entry.change, row.entry.id }) }
   vim.list_extend(config, args)
   vim.list_extend(config, { '--tool', 'fujutsu-select', '--', 'root-file:' .. vim.json.encode(row.path) })
-  return config, function() vim.fn.delete(dir, 'rf') end
+  return config, function() vim.fn.delete(dir, 'rf') end, complete
 end
 
 return M
