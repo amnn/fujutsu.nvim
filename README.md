@@ -55,8 +55,9 @@ The view uses your configured `jj log` defaults, preserving ANSI colors and styl
 as Neovim highlights, with paging and log word wrapping disabled. The first 16 colors use
 `g:terminal_color_0` through `g:terminal_color_15` when set.
 Log rendering and validation run synchronously; large repositories may briefly
-block the editor. Repository actions run asynchronously, with a per-repository
-lock while jj or its internal description editor is active.
+block the editor. Repository actions run asynchronously. Concurrent plugin or
+external jj commands retain native jj semantics, including operation divergence
+and conflicts; pending editors do not lock the repository.
 
 ## Marks and log queries
 
@@ -78,9 +79,16 @@ Enter applies it, normal-mode Escape cancels. Invalid queries remain editable.
 `:J COMMAND ...` executes jj asynchronously without a shell. Single/double
 quotes group arguments; use native command-line `<C-r>a` to insert a mark,
 for example `:J rebase -r '<C-r>a' -o main`. Commands that request a text
-editor open one inside Neovim: `:write` accepts, normal-mode Escape cancels.
-Save modified workspace buffers before repository commands. Avoid simultaneous
-external jj mutations while an operation is running.
+editor open one inside Neovim: `:write` saves a draft and saving then closing
+(`:wq`) continues jj. Normal-mode Escape cancels only that operation. Instructions
+are comments in the editor. Each concurrent process owns its editor and cleanup.
+Save modified workspace buffers before commands that can rewrite working-copy
+files; read-only inspection remains available with unsaved buffers or editors.
+
+Operations report a single-line summary. `:checkhealth jj` shows bounded recent
+command diagnostics grouped by workspace path (30 commands, up to 32 KiB per
+output stream). This is diagnostic output, not a second operation history;
+repository history and undo remain jj's responsibility.
 
 ## Squash and extraction
 
@@ -102,8 +110,8 @@ cannot be represented independently require selecting the paired change too.
 
 Emptied sources are abandoned, including whole-commit extraction. jj creates a
 fresh empty working-copy commit when `@` is abandoned. Combined descriptions
-are edited inside Neovim with `:write` to accept and Escape to cancel the
-operation. Extraction preserves descriptions when abandoning their sources.
+are edited inside Neovim: `:write` saves a draft, `:wq` saves and finishes,
+and normal-mode Escape cancels the operation. Extraction preserves descriptions when abandoning their sources.
 
 ## Repository undo and redo
 

@@ -26,7 +26,7 @@ vim.api.nvim_create_autocmd('BufWriteCmd', {
 vim.api.nvim_create_user_command('J', function(opts)
   local ok, err = pcall(require('fujutsu.commands').execute, opts)
   if not ok then
-    vim.notify(tostring(err), vim.log.levels.ERROR, { title = 'fujutsu' })
+    require('fujutsu.diagnostics').error(err)
   end
 end, { nargs = '*', desc = 'Open a log or run a Jujutsu command' })
 
