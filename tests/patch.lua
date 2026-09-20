@@ -3,6 +3,8 @@ vim.cmd.runtime('plugin/fujutsu.lua')
 local patch = require('fujutsu.patch')
 assert(patch.apply('old\n', 'new\n', { { patch = '+new', old_line = 2, new_line = 1 } }) == 'old\nnew\n')
 assert(patch.apply('old\n', 'new\n', { { patch = '-old', old_line = 1 } }) == '')
+assert(patch.apply('old', 'new', { { patch = '+new', old_line = 2, new_line = 1 } }) == 'old\nnew')
+assert(patch.apply('old', 'new', { { patch = '-old', old_line = 1 } }) == '')
 assert(patch.apply('old', 'new', { { patch = '-old', old_line = 1 },
   { patch = '+new', old_line = 2, new_line = 1 } }) == 'new')
 local dir = vim.fn.tempname()
@@ -67,7 +69,7 @@ jj({ 'undo' })
 -- Visual selection of only the added line does not move the paired deletion.
 focus_patch('+first replacement')
 vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes('Vx', true, false, true), 'xt', false)
-local visual_job = assert(require('fujutsu.runner').active[vim.uv.fs_realpath(dir)])
+local visual_job = assert(require('fujutsu.runner').latest(dir))
 assert(vim.wait(10000, function() return visual_job.result ~= nil end, 20))
 assert(visual_job.result.code == 0, visual_job.result.stderr)
 parent = jj({ 'file', 'show', '-r', '@-', 'file' })
@@ -79,6 +81,24 @@ file_row(); apply('s', capture(log, false))
 assert(jj({ 'file', 'show', '-r', '@-', 'file' }) == table.concat(source, '\n') .. '\n')
 assert(jj({ 'file', 'show', '-r', '@-', 'other' }) == 'other base\n')
 print('PASS: file, hunk and added-line operations preserve unselected changes and final-newline semantics')
+jj({ 'new', 'root()', '-m', 'eof base' })
+local f = assert(io.open(dir .. '/eof', 'wb')); f:write('old'); f:close()
+jj({ 'new' })
+f = assert(io.open(dir .. '/eof', 'wb')); f:write('new'); f:close()
+log.refresh(buf)
+for i, row in pairs(log.rows) do
+  if row.path == 'eof' and row.entry.working_copy and i == row.first then
+    vim.api.nvim_win_set_cursor(0, { i, 0 }); log.toggle(buf); break
+  end
+end
+for i, row in pairs(log.rows) do
+  if row.patch == '+new' and row.entry.working_copy then vim.api.nvim_win_set_cursor(0, { i, 0 }); break end
+end
+local eof_selection = capture(log, false); eof_selection.visual = true
+apply('x', eof_selection)
+assert(jj({ 'file', 'show', '-r', '@-', 'eof' }) == 'old\nnew')
+assert(jj({ 'file', 'show', '-r', '@', 'eof' }) == 'new')
+print('PASS: addition-only EOF extraction inserts a separator without changing source contents or final EOF')
 vim.cmd.cd('/')
 vim.fn.delete(dir, 'rf')
 vim.cmd.qa({ bang = true })

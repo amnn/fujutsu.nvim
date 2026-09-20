@@ -32,10 +32,11 @@ function M.apply(base, source, rows)
     vim.list_extend(result, insert[i] or {})
     if old[i] and not remove[i] then result[#result + 1] = old[i] end
   end
-  -- Keeping an unterminated old final line while adding another line after it
-  -- cannot represent two lines faithfully. Ask for the paired removal too.
+  -- An intermediate tree may retain an unterminated old line followed by a
+  -- selected addition. Supply its separator; jj leaves the compensating edit
+  -- in the source. The final selected line retains its original EOF status.
   for i = 1, #result - 1 do
-    assert(result[i]:sub(-1) == '\n', 'Select the paired newline change as well')
+    if result[i]:sub(-1) ~= '\n' then result[i] = result[i] .. '\n' end
   end
   return table.concat(result)
 end
