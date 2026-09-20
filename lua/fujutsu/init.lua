@@ -5,7 +5,7 @@ local function jj(cwd, args, colored)
   vim.list_extend(command, args)
   local result = vim.system(command, { cwd = cwd, text = true }):wait()
   if result.code ~= 0 then
-    error(vim.trim(result.stderr or '') ~= '' and vim.trim(result.stderr) or 'jj failed', 0)
+    error(require('fujutsu.diagnostics').plain(vim.trim(result.stderr or '') ~= '' and vim.trim(result.stderr) or 'jj failed'), 0)
   end
   return result.stdout
 end
@@ -32,7 +32,7 @@ end
 
 local function try_refresh(buf)
   local success, message = pcall(refresh, buf)
-  if not success then vim.notify(message, vim.log.levels.ERROR) end
+  if not success then require('fujutsu.diagnostics').error(message, vim.b[buf].fujutsu_repo) end
 end
 
 local group = vim.api.nvim_create_augroup('fujutsu_reload', { clear = true })
@@ -73,13 +73,8 @@ function M.read_log(buf, root)
   else
     log = require('fujutsu.log').new(root, jj)
     local location = require('fujutsu.uri').parse(vim.api.nvim_buf_get_name(buf))
-    if not vim.b[buf].fujutsu_query and location.path ~= '' then
-      local saved = vim.json.decode(location.path)
-      assert(type(saved) == 'table' and type(saved.query) == 'string', 'Invalid saved log query')
-      assert(saved.limit == nil or (type(saved.limit) == 'string' and saved.limit:match('^%d+$')), 'Invalid saved log limit')
-      vim.b[buf].fujutsu_query, vim.b[buf].fujutsu_limit = saved.query, saved.limit
-    end
-    log.query, log.limit = vim.b[buf].fujutsu_query, vim.b[buf].fujutsu_limit
+    log.query = vim.b[buf].fujutsu_query or location.query or ''
+    log.limit = vim.b[buf].fujutsu_limit or location.limit
     log.refresh(buf)
     logs[buf] = log
     vim.api.nvim_create_autocmd('BufWipeout', {
@@ -108,13 +103,16 @@ function M.read_log(buf, root)
   for key, command in pairs({ ['<CR>'] = 'edit', o = 'split', gO = 'vsplit', O = 'tabedit', p = 'pedit' }) do
     vim.keymap.set('n', key, function()
       local success, message = pcall(log.visit, buf, command)
-      if not success then vim.notify(message, vim.log.levels.ERROR) end
+      if not success then require('fujutsu.diagnostics').error(message, root) end
     end, { buffer = buf, silent = true, desc = 'Visit revision with ' .. command })
   end
-  vim.keymap.set('n', '=', function()
-    local success, message = pcall(log.toggle, buf)
-    if not success then vim.notify(message, vim.log.levels.ERROR) end
-  end, { buffer = buf, silent = true, desc = 'Toggle revision stats or file diff' })
+  for key, fn in pairs({ ['='] = log.toggle, ['+'] = log.toggle_all, ['g@'] = log.head }) do
+    vim.keymap.set('n', key, function()
+      local success, message = pcall(fn, buf)
+      if not success then require('fujutsu.diagnostics').error(message, root) end
+    end, { buffer = buf, silent = true, desc = key == 'g@' and 'Jump to working-copy revision'
+      or key == '+' and 'Toggle sibling expansions' or 'Toggle revision stats or file diff' })
+  end
   require('fujutsu.log_ui').attach(log, buf, root)
   require('fujutsu.actions').attach(log, buf, root)
   vim.bo[buf].filetype = 'fujutsu'
@@ -161,23 +159,47 @@ function M.open(opts)
       end
     end
   end
-  local buf = vim.api.nvim_create_buf(false, true)
-  vim.api.nvim_buf_set_name(buf, require('fujutsu.uri').name(root, 'log', tostring(buf)))
-  vim.b[buf].fujutsu_query, vim.b[buf].fujutsu_limit = opts.query, opts.limit
+  local name = require('fujutsu.uri').log_name(root, opts.query, opts.limit)
+  local buf = vim.fn.bufnr(name)
+  local fresh = buf == -1
+  if fresh then
+    buf = vim.api.nvim_create_buf(false, true)
+    vim.api.nvim_buf_set_name(buf, name)
+    vim.b[buf].fujutsu_query, vim.b[buf].fujutsu_limit = opts.query or '', opts.limit
+  end
+  if not fresh and not vim.api.nvim_buf_is_loaded(buf) then vim.fn.bufload(buf) end
   local ready, message = pcall(M.read_log, buf, root)
   if not ready then
-    vim.api.nvim_buf_delete(buf, { force = true })
+    if fresh then vim.api.nvim_buf_delete(buf, { force = true }) end
     error(message, 0)
   end
   local ok, err = pcall(vim.cmd, { cmd = opts.current_window and 'buffer' or 'sbuffer',
     args = { tostring(buf) }, mods = mods })
   if not ok then
-    vim.api.nvim_buf_delete(buf, { force = true })
+    if fresh then vim.api.nvim_buf_delete(buf, { force = true }) end
     error(err, 0)
   end
   vim.bo[buf].filetype = 'fujutsu'
   vim.wo.wrap = false
   focus_revision(buf, opts.revision)
+end
+
+function M.change_query(buf, query)
+  local log = assert(logs[buf], 'Not a log buffer')
+  query = vim.trim(query)
+  local name = require('fujutsu.uri').log_name(vim.b[buf].fujutsu_repo, query, log.limit)
+  local existing = vim.fn.bufnr(name)
+  if existing ~= -1 and existing ~= buf then
+    if not vim.api.nvim_buf_is_loaded(existing) then vim.fn.bufload(existing) end
+    M.read_log(existing, vim.b[buf].fujutsu_repo)
+    vim.cmd.buffer(existing)
+    return existing
+  end
+  local old, effective = log.query, log.effective_query
+  log.query = query
+  local ok, err = pcall(log.refresh, buf)
+  if not ok then log.query, log.effective_query = old, effective; error(err, 0) end
+  return buf
 end
 
 function M.refresh_root(root)

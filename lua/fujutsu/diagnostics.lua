@@ -20,7 +20,13 @@ end
 
 function M.notice(text, level)
   local line = M.plain(text):gsub('[\r\n\t]+', ' ')
-  line = vim.fn.strcharpart(line, 0, math.max(20, vim.o.columns - 12))
+  local width = math.max(1, vim.o.columns - 12)
+  if vim.fn.strdisplaywidth(line) > width then
+    line = vim.fn.strcharpart(line, 0, width)
+    repeat line = vim.fn.strcharpart(line, 0, math.max(0, vim.fn.strchars(line) - 1))
+    until vim.fn.strdisplaywidth(line) < width
+    line = line .. '…'
+  end
   vim.notify(line, level or vim.log.levels.INFO, { title = 'fujutsu' })
 end
 

@@ -185,8 +185,8 @@ local function tests()
   edit(a)
   vim.cmd.J()
   eq(2, #vim.api.nvim_tabpage_list_wins(0))
-  assert(log_buf ~= vim.api.nvim_get_current_buf())
-  print('PASS: logs in other tabs are not focused')
+  eq(log_buf, vim.api.nvim_get_current_buf())
+  print('PASS: identical queries share buffers without focusing other tabs')
 
   vim.cmd.tabnew()
   vim.cmd.cd(vim.fn.fnameescape(a))
@@ -219,7 +219,7 @@ local function tests()
     vim.cmd('normal =')
   end
   local row, line = find('file.txt')
-  assert(line:find('M ■■■■■', 1, true), line) -- Three used boxes, two neutral.
+  assert(line:find('M ■■■■■', 1, true), line) -- All boxes encode the addition/deletion ratio.
   assert(line:find('M ■■■■■  +2 -1 file.txt', 1, true), line)
   assert(select(2, find('removed.txt')):find('D ■■■■■     -1 removed.txt', 1, true))
   assert(select(2, find('space name.txt')):find('A ■■■■■  +1    space name.txt', 1, true))
@@ -245,8 +245,8 @@ local function tests()
       assert(not chunk:find('file.txt', 1, true), 'stat highlights must not cover filenames')
     end
   end
-  assert(colors.FujutsuStatAdd and colors.FujutsuStatDelete and colors.FujutsuStatNeutral,
-    'stats need semantic addition, deletion, and neutral highlights')
+  assert(colors.FujutsuStatAdd and colors.FujutsuStatDelete and not colors.FujutsuStatNeutral,
+    'nonempty stats use all five boxes for addition/deletion proportions')
   local collapsed = lines()
   toggle(row, #line - 1)
   eq(row, vim.api.nvim_win_get_cursor(0)[1])

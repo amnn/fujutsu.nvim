@@ -24,7 +24,7 @@ local function stat(file, widths)
   -- Keep control characters in filenames from creating extra buffer rows.
   local path = vim.fn.strtrans(file.path)
   local total = added + removed
-  local used = math.min(5, total)
+  local used = total > 0 and 5 or 0
   local green = total == 0 and 0 or math.floor(used * added / total + 0.5)
   if added > 0 and removed > 0 and used > 1 then
     green = math.max(1, math.min(used - 1, green))
@@ -81,6 +81,8 @@ function M.new(root, jj)
       local cursor = vim.api.nvim_win_get_cursor(win)
       cursors[win] = { row = state.rows[cursor[1]], cursor = cursor }
     end
+    state.effective_query = state.query and state.query ~= '' and state.query
+      or vim.trim(jj(root, { 'config', 'get', 'revsets.log' }))
     local lines, rows = require('fujutsu.log_ui').header(state, root, jj)
     -- Expansion follows uniquely visible changes across rewrites, not obsolete
     -- commit hashes. Working-copy expansion retains its special @ identity.
@@ -131,19 +133,17 @@ function M.new(root, jj)
       .. 'f.status_char(), f.lines_added(), f.lines_removed(), json(f.display_diff_path()), json(f.path()))'
       .. ' ++ "\x1f\n"' .. diffs .. ').join("") ++ "\x1eMARGIN\x1f\n") ++ "\x1eEND\x1f\n"'
     -- Wrapping must happen in the editor, not through our metadata markers.
-    state.query = state.query or vim.trim(jj(root, { 'config', 'get', 'revsets.log' }))
-    local args = { '--config', 'ui.log-word-wrap=false', 'log', '-r', state.query, '-T', template }
+    local args = { '--config', 'ui.log-word-wrap=false', 'log', '-r', state.effective_query, '-T', template }
     if state.limit then vim.list_extend(args, { '-n', state.limit }) end
     local output = jj(root, args, true)
     vim.b[buf].fujutsu_query, vim.b[buf].fujutsu_limit = state.query, state.limit
     local uri = require('fujutsu.uri')
     local name = vim.api.nvim_buf_get_name(buf)
     if name:match('^fujutsu://') then
-      local location = uri.parse(name)
-      local updated = uri.name(root, 'log', location.id, vim.json.encode({ query = state.query, limit = state.limit }))
+      local updated = uri.log_name(root, state.query, state.limit)
       if name ~= updated then vim.api.nvim_buf_set_name(buf, updated) end
     end
-    table.insert(lines, 1, 'Query: ' .. vim.fn.strtrans(state.query) .. (state.limit and '  [limit ' .. state.limit .. ']' or ''))
+    table.insert(lines, 1, 'Query: ' .. vim.fn.strtrans(state.effective_query) .. (state.limit and '  [limit ' .. state.limit .. ']' or ''))
     table.insert(rows, 1, { kind = 'query' })
     local entry
     local file_row, diff_row, in_hunk, old_line, new_line
@@ -231,6 +231,17 @@ function M.new(root, jj)
         return ''
       end)
       if group ~= 'FujutsuDiffAdd' and group ~= 'FujutsuDiffDelete' then flush_words() end
+      if skip then
+        -- Template sentinels and omitted patch headers can share a physical
+        -- line with jj's graph transitions. Drop only our content, never edges.
+        local graph = patch and line:sub(1, #line - #patch) or line
+        local edges = plain(graph):gsub('│', ''):gsub('┃', ''):gsub('┆', ''):gsub('┊', '')
+          :gsub('╎', ''):gsub('╏', ''):gsub('[|:%s]', '')
+        if edges ~= '' then
+          lines[#lines + 1] = graph
+          rows[#lines] = { kind = 'graph' }
+        end
+      end
       if not skip then
         lines[#lines + 1] = line
         rows[#lines] = row or diff_row or entry
@@ -282,7 +293,10 @@ function M.new(root, jj)
               and old.old_line == row.old_line and (old.path or i == entry.first) then best = i; break end
           end
         end
-        if best then vim.api.nvim_win_set_cursor(win, { best, 0 }) end
+        if best then
+          local col = old.kind == 'marks' and math.min(saved.cursor[2], #lines[best]) or 0
+          vim.api.nvim_win_set_cursor(win, { best, col })
+        end
       end
     end
     require('fujutsu.log_ui').draw(state, buf)
@@ -329,6 +343,9 @@ function M.new(root, jj)
     if current and current.kind == 'query' then
       require('fujutsu.log_ui').edit_query(state, buf)
       return
+    elseif current and current.kind == 'marks' then
+      require('fujutsu.log_ui').pin(state, buf)
+      return
     end
     local row = state.selection(buf)
     local file = require('fujutsu.file')
@@ -352,6 +369,51 @@ function M.new(root, jj)
     end
     file.open(root, id, path, { base = base, explicit = true, workspace = not old and row.entry.working_copy,
       command = command, line = old and row.old_line or row.new_line })
+  end
+
+  function state.focus(id)
+    for i, row in pairs(state.rows) do
+      if row.id == id and i == row.first then vim.api.nvim_win_set_cursor(0, { i, 0 }); return true end
+    end
+    return false
+  end
+
+  function state.head(buf)
+    state.refresh(buf)
+    for _, entry in ipairs(state.catalog.entries) do
+      if entry.working_copy then state.focus(entry.id); return end
+    end
+    require('fujutsu.diagnostics').notice('Working-copy revision @ is excluded by this query')
+  end
+
+  function state.toggle_all(buf)
+    local row = state.rows[vim.fn.line('.')]
+    local old = { expanded = vim.deepcopy(state.expanded), files = vim.deepcopy(state.files), working_copy = state.working_copy }
+    if row and (row.id or row.entry) then
+      local entry = row.entry or row
+      local meta = state.catalog.by_id[entry.id]
+      local key = entry.working_copy and '@' or entry.id
+      local files = state.files[key] or {}
+      local expand = false
+      for _, path in ipairs(meta.paths) do if not files[path] then expand = true end end
+      for _, path in ipairs(meta.paths) do files[path] = expand end
+      state.files[key] = files
+      if entry.working_copy then state.working_copy = true else state.expanded[entry.id] = true end
+    else
+      local expand = false
+      for _, entry in ipairs(state.catalog.entries) do
+        if #entry.paths > 0 and not (entry.working_copy and state.working_copy
+          or not entry.working_copy and state.expanded[entry.id]) then expand = true end
+      end
+      for _, entry in ipairs(state.catalog.entries) do
+        if entry.working_copy then state.working_copy = expand else state.expanded[entry.id] = expand end
+      end
+    end
+    local ok, err = pcall(state.refresh, buf)
+    if not ok then
+      state.expanded, state.files, state.working_copy = old.expanded, old.files, old.working_copy
+      error(err, 0)
+    end
   end
 
   function state.toggle(buf)

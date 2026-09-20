@@ -7,7 +7,7 @@ local file = require('fujutsu.file')
 local function protect(fn)
   return function()
     local ok, err = pcall(fn)
-    if not ok then vim.notify(tostring(err), vim.log.levels.ERROR) end
+    if not ok then require('fujutsu.diagnostics').error(err) end
   end
 end
 M.protect = protect
@@ -27,7 +27,7 @@ function M.rebase(log, buf, root, selected, upper, reg, mode, placement)
   runner.guard(root)
   selection.validate(log, buf, selected)
   local contextual = M.ids(selected)
-  local _, registered = marks.get(reg, log.catalog)
+  local registered = marks.resolve(reg, log.catalog, root, file.jj)
   if registered then
     return runner.run(root, M.rebase_args(upper and registered or contextual,
       upper and contextual or registered, mode, placement))
@@ -44,29 +44,13 @@ function M.rebase(log, buf, root, selected, upper, reg, mode, placement)
   end)
 end
 
-local function specification(upper)
-  vim.api.nvim_echo({ { (upper and 'R' or 'r') .. ': source [b]ranch / [s]ource / [r]evisions; Enter = bo', 'Question' } }, false, {})
-  vim.cmd.redraw()
-  local mode = vim.fn.getcharstr()
-  if mode == '\27' then return end
-  if mode == '\r' then return 'b', 'o' end
-  assert(mode == 'b' or mode == 's' or mode == 'r', 'Expected b, s or r')
-  vim.api.nvim_echo({ { 'Rebase ' .. mode .. ': [o]nto / [A]fter / [B]efore; Enter = onto', 'Question' } }, false, {})
-  vim.cmd.redraw()
-  local placement = vim.fn.getcharstr()
-  if placement == '\27' then return end
-  if placement == '\r' then placement = 'o' end
-  assert(placement == 'o' or placement == 'A' or placement == 'B', 'Expected o, A or B')
-  return mode, placement
-end
-
 function M.squash(log, buf, root, selected, key, reg)
   runner.guard(root)
   selection.validate(log, buf, selected)
   local contextual = M.ids(selected)
   local args = { 'squash' }
   if key == 'S' then
-    local _, sources = marks.get(reg, log.catalog)
+    local sources = marks.resolve(reg, log.catalog, root, file.jj)
     assert(sources, 'Register ' .. reg .. ' is not a valid revision mark')
     vim.list_extend(args, { '--from', table.concat(sources, ' | '), '--into', table.concat(contextual, ' | ') })
   elseif key == 'x' then
@@ -92,29 +76,21 @@ function M.create(log, buf, root, selected, key)
   selection.validate(log, buf, selected)
   local ids = M.ids(selected)
   assert(#ids == 1, 'Select one contextual revision')
-  local known = vim.deepcopy(log.catalog)
   local args = key == 'ge' and { 'edit', ids[1] }
     or { 'new', key == 'gn' and '--insert-after' or '--insert-before', ids[1] }
   if key == 'gN' then args[#args + 1] = '--no-edit' end
   return runner.run(root, args, { done = function(result)
     if result.code ~= 0 or key == 'ge' then return end
-    local current = marks.catalog(root, file.jj)
-    local created
-    for change, id in pairs(current) do
-      if known[change] == nil then
-        assert(not created, 'More than one new change; select its description in the log')
-        created = id
-      end
-    end
-    if created then
-      file.open(root, created, 'description', { description = true, explicit = true, readonly = false, command = 'edit' })
-    end
+    if not vim.api.nvim_buf_is_valid(buf) or vim.api.nvim_get_current_buf() ~= buf then return end
+    local entry = selection.entries(selected)[1]
+    local rev = key == 'gn' and '@' or 'parents(change_id(' .. entry.change .. ') & all())'
+    local ok, created = pcall(file.resolve, root, rev)
+    if ok then log.focus(created) end
   end })
 end
 
 function M.history(root, command)
   assert(command == 'undo' or command == 'redo', 'Expected undo or redo')
-  vim.notify('jj ' .. command .. ': repository operations, including external changes')
   return runner.run(root, { command })
 end
 
@@ -138,14 +114,24 @@ function M.attach(log, buf, root)
     end
   end
   for _, key in ipairs({ 'r', 'R' }) do
-    for _, mode in ipairs({ 'n', 'x' }) do
-      vim.keymap.set(mode, key, protect(function()
-        local reg = vim.v.register
-        local selected = selection.capture(log, mode == 'x')
-        local source, placement = specification(key == 'R')
-        vim.api.nvim_echo({}, false, {})
-        if source then M.rebase(log, buf, root, selected, key == 'R', reg, source, placement) end
-      end), { buffer = buf, desc = 'Rebase ' .. (key == 'r' and 'context' or 'register') })
+    local specifications = { ['<CR>'] = { 'b', 'o' } }
+    for _, source in ipairs({ 'b', 's', 'r' }) do
+      specifications[source .. '<CR>'] = { source, 'o' }
+      for _, placement in ipairs({ 'o', 'A', 'B' }) do specifications[source .. placement] = { source, placement } end
+    end
+    for suffix, spec in pairs(specifications) do
+      for _, mode in ipairs({ 'n', 'x' }) do
+        vim.keymap.set(mode, key .. suffix, protect(function()
+          local reg = vim.v.register
+          M.rebase(log, buf, root, selection.capture(log, mode == 'x'), key == 'R', reg, spec[1], spec[2])
+        end), { buffer = buf, desc = 'Rebase ' .. (key == 'r' and 'context' or 'register') .. ': '
+          .. ({ b = 'branch', s = 'source and descendants', r = 'revisions' })[spec[1]] .. ' '
+          .. ({ o = 'onto', A = 'after', B = 'before' })[spec[2]] })
+      end
+    end
+    for _, prefix in ipairs({ '', 'b', 's', 'r' }) do
+      vim.keymap.set({ 'n', 'x' }, key .. prefix .. '<Esc>', '<Esc>',
+        { buffer = buf, desc = 'Cancel rebase sequence' })
     end
   end
 end

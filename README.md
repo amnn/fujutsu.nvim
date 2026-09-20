@@ -23,6 +23,7 @@ vim.opt.runtimepath:prepend('/path/to/fujutsu.nvim')
 - If the current tab already shows a log for the same repository, `:J` refreshes
   and focuses that window instead. Logs for other repositories remain open.
 - `:tab J` opens the log in a new tab, even if the current tab already shows it.
+  Identical repository/query views share a buffer, including expansion and pin state.
 - `:e` (or `:e!`) refreshes the current log buffer in place.
 - Saving a file in Neovim marks logs for that workspace stale. Each refreshes
   when you enter it, preserving expansion choices; a visible log split does not
@@ -38,11 +39,17 @@ vim.opt.runtimepath:prepend('/path/to/fujutsu.nvim')
   Binary, rename, and mode-change metadata remain visible.
   Each file expands independently; pressing `=` inside
   a diff collapses it. Expansion choices survive `:J` and `:e` refreshes in that buffer.
+- `+` on a commit or file toggles all that commit's file diffs. On a log header,
+  it toggles stats for all displayed commits. If any member is collapsed,
+  expand all; otherwise collapse all. Graph transitions are never hidden.
+- `g@` jumps to the working-copy revision, or reports that it is excluded by
+  the current query. Native `@` macro invocation remains available.
 - Stats blocks have graph-preserving blank lines on either side and a total
   header. File rows show an `A`/`M`/`D` status (also `R`/`C` for renames/copies),
   five boxes, right-aligned addition `+` / deletion `-` line counts, then the filename.
   The header shows five boxes and counts for the whole change. Boxes show the
-  proportion of added and removed lines, with unused boxes gray for small diffs.
+  proportion of added and removed lines using all five boxes for nonzero counts.
+  A one-line deletion has five red boxes; zero-line metadata changes use gray.
   Zero counts are omitted; binary and empty-file changes remain visible.
 - Close a log window with `:q`. The read-only log stays hidden so jump-list
   navigation can return to it; use `:bwipeout` to discard it explicitly.
@@ -61,20 +68,35 @@ and conflicts; pending editors do not lock the repository.
 
 ## Marks and log queries
 
-`m` replaces the unnamed revision mark, `M` adds to it, and `d` removes
+`m` replaces the unnamed revision mark, `M` adds to it, and `dm` removes
 contextual commits. These also accept Visual selections and register prefixes:
-`"am`, `"aM` (or `"Am`), and `"ad`. Marks contain commit sets, not partial
-patches, and are stored as ordinary `change_id(...) | change_id(...)` text.
-Normal yanks are unchanged and can replace the unnamed mark.
+`"am`, `"aM` (or `"Am`), and `"adm`. Marks contain commit sets, not partial
+patches, stored as short change-ID unions such as `zxstqxkk | tynqwntz`.
+Registers are native and shared between logs. Copied change/commit IDs and
+bookmarks, or unions of them, are recognized only when all symbols resolve
+unambiguously within that log's displayed revisions. Arbitrary expressions
+such as `mine()` belong in command mode. jj revalidates operands on execution.
 
-The Marks section lists valid non-empty marks. On a mark row, `d` clears it
-and Space pins/unpins its gutter. Hover previews that mark; modifications
-briefly preview the affected mark. Otherwise the pinned or unnamed mark is
-shown. Pinning never changes which register a command modifies.
+Named marking weakly associates the unnamed register with that name. `M` and
+`dm` follow the association; bare `m` unlinks it and replaces the unnamed mark.
+Normal Vim yanks remain untouched and break the association. Manually changing
+register contents also breaks it; equal contents alone never establish a link.
 
-Every log shows its effective Query. Enter on that row opens an editor;
-Enter applies it, normal-mode Escape cancels. Invalid queries remain editable.
-`:J log -r 'REVSET' [-n LIMIT]` opens a separate query-specific log.
+The one-line header shows counts only for multiple revisions, for example
+`Marks: "a[2]  b`. A `"` before a name identifies the unnamed association;
+otherwise independent unnamed contents appear as their own `"` mark. Enter on
+a token pins/unpins it; `dm` clears it. Hovering or modifying a mark briefly
+previews it alongside the pin. On overlapping commits the preview's register
+identifier wins. Header and gutter share pinned/preview highlights. Modifying
+the pinned mark does not flash a preview. Pinning never redirects mutations.
+
+Every log shows its effective Query. Enter on that row edits it on the command
+line; Enter applies, Escape cancels. Invalid expressions remain available for
+correction. Empty input uses the configured default revset, displayed dimmed;
+refresh picks up changes to that default. `:J log -r 'REVSET' [-n LIMIT]` opens
+or reuses the matching query-specific buffer. Changing to an existing query
+reuses that buffer. Buffer names retain readable repository paths, with the
+revset in a percent-encoded optional query parameter, not a JSON payload.
 
 `:J COMMAND ...` executes jj asynchronously without a shell. Single/double
 quotes group arguments; use native command-line `<C-r>a` to insert a mark,
@@ -105,8 +127,9 @@ can be selected independently. Context lines do not move. Mixed scopes,
 blockwise selections, and partial selections spanning files/commits are
 rejected. Visual selections of file rows within one commit are supported.
 Binary/rename/symlink changes require whole-file selection; conflicted revisions
-must be resolved before selecting partial lines. Final-newline changes that
-cannot be represented independently require selecting the paired change too.
+must be resolved before selecting partial lines. Extracting an addition after
+an unterminated retained line supplies the needed separator newline. The selected
+final line's EOF status is preserved; the compensating change stays in the source.
 
 Emptied sources are abandoned, including whole-commit extraction. jj creates a
 fresh empty working-copy commit when `@` is abandoned. Combined descriptions
@@ -124,7 +147,7 @@ change native text undo/redo in file or description buffers.
 
 `gn` inserts an empty commit after context (child side) and edits it as `@`.
 Existing children are rebased onto it. `gN` inserts before context (parent
-side) without moving `@`. Both open the new description for editing.
+side) without moving `@`. Both stay in the log; no description editor opens.
 `ge` runs `jj edit` on the owning revision without creating a commit.
 These operations protect unsaved workspace buffers and respect jj immutability.
 They do not implicitly move bookmarks.
@@ -144,6 +167,8 @@ Escape cancels the pending specification. Lowercase prompts for a destination
 only when the unnamed register is not a valid mark; its suggested base is
 `main`, configurable with `jj config set --repo fujutsu.rebase-base NAME`.
 Explicit invalid registers fail rather than falling back or using a subset.
+The complete sequences are normal mappings with descriptions for tools such as
+which-key; the plugin does not present a separate key-sequence dialog.
 
 ## Colors
 
@@ -154,7 +179,11 @@ Plugin-owned stats use theme highlights rather than the terminal ANSI palette:
 | `FujutsuStatAdd` | `Added` | Added boxes, `+` counts, `A` status |
 | `FujutsuStatDelete` | `Removed` | Removed boxes, `-` counts, `D` status |
 | `FujutsuStatChange` | `Changed` | Other status letters |
-| `FujutsuStatNeutral` | `Comment` | Unused boxes |
+| `FujutsuStatNeutral` | `Comment` | Zero-line metadata boxes |
+| `FujutsuHeader` | `Label` | Marks and Query labels |
+| `FujutsuMark` | `Special` | Ordinary mark tokens and default gutter |
+| `FujutsuMarkPinned` | `DiagnosticInfo` | Pinned token and gutter |
+| `FujutsuMarkPreview` | `Search` | Previewed token and gutter |
 | `FujutsuDiffAdd` | `DiffAdd` | Added diff lines |
 | `FujutsuDiffDelete` | `DiffDelete` | Removed diff lines |
 
@@ -403,6 +432,8 @@ nvim --headless -u NONE -l tests/rebase.lua
 nvim --headless -u NONE -l tests/squash.lua
 nvim --headless -u NONE -l tests/patch.lua
 nvim --headless -u NONE -l tests/create.lua
+nvim --headless -u NONE -l tests/concurrency.lua
+nvim --headless -u NONE -l tests/graph.lua
 ```
 
 Tests create and remove temporary jj repositories; no plugin test dependencies
