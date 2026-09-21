@@ -122,31 +122,7 @@ function M.attach(log, buf, root)
       end), { buffer = buf, desc = key == 'x' and 'Extract context before source' or 'Squash changes' })
     end
   end
-  for _, key in ipairs({ 'r', 'R' }) do
-    local specifications = { ['<CR>'] = { 'b', 'o' } }
-    for _, source in ipairs({ 'b', 's', 'r' }) do
-      specifications[source .. '<CR>'] = { source, 'o' }
-      for _, placement in ipairs({ 'o', 'A', 'B' }) do specifications[source .. placement] = { source, placement } end
-    end
-    for suffix, spec in pairs(specifications) do
-      for _, mode in ipairs({ 'n', 'x' }) do
-        vim.keymap.set(mode, key .. suffix, protect(function()
-          local reg = vim.v.register
-          M.rebase(log, buf, root, selection.capture(log, mode == 'x'), key == 'R', reg, spec[1], spec[2])
-        end), { buffer = buf, desc = 'Rebase ' .. (key == 'r' and 'context' or 'register') .. ': '
-          .. ({ b = 'branch', s = 'source and descendants', r = 'revisions' })[spec[1]] .. ' '
-          .. ({ o = 'onto', A = 'after', B = 'before' })[spec[2]] })
-      end
-    end
-    for _, prefix in ipairs({ '', 'b', 's', 'r' }) do
-      -- Ordinary no-op prefixes prevent timeout from invoking native r/R.
-      -- Mapping discovery and popup triggers belong to the user's keymap UI.
-      vim.keymap.set({ 'n', 'x' }, key .. prefix, function() end,
-        { buffer = buf, desc = 'Rebase ' .. (key == 'r' and 'context' or 'register') .. '…' })
-      vim.keymap.set({ 'n', 'x' }, key .. prefix .. '<Esc>', '<Esc>',
-        { buffer = buf, desc = 'Cancel rebase sequence' })
-    end
-  end
+  require('fujutsu.rebase').attach(log, buf, root, M.rebase)
 end
 
 return M

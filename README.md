@@ -182,12 +182,15 @@ Escape cancels the pending specification. Lowercase prompts for a destination
 only when the unnamed register is not a valid mark; its suggested base is
 `main`, configurable with `jj config set --repo fujutsu.rebase-base NAME`.
 Explicit invalid registers fail rather than falling back or using a subset.
-The complete sequences are normal mappings with descriptions for tools such as
-which-key can list them. Fujutsu does not load or call a keymap UI, replay keys,
-or force a popup when a prefix times out. Ordinary no-op prefix mappings cancel
-incomplete sequences safely rather than entering native Replace mode. Type the
-full sequence within your normal mapping timeout; use your keymap UI to browse
-available commands.
+`r`/`R` enter Vim's native operator-pending mode, capturing the register and
+context (including the full Visual selection). Described operator-pending
+mappings provide the continuations. Which-key can discover these through its
+normal mode handling; Fujutsu neither loads nor calls it. You can pause after
+`r`/`R`, browse choices, and continue without entering Replace mode. Without a
+keymap UI, type the source/placement pair within your normal mapping timeout.
+Unrelated motions cancel without modifying the log. Temporary mappings and
+`operatorfunc` are restored on completion or cancellation; normal yanks, user
+operators and macros remain intact.
 
 ## Colors
 
@@ -468,10 +471,11 @@ nvim --headless -u NONE -l tests/rebase_prefix.lua
 
 `tests/rebase_prefix.lua` uses an embedded Neovim to test real input pauses.
 Set `FUJUTSU_WHICH_KEY=/path/to/which-key.nvim` to test coexistence with the
-installed plugin, including repeated prefixes, Escape and explicit registers.
+installed plugin, asserting actual rebase popup contents, paused continuations,
+Visual selections, explicit registers, cancellation, state restoration and macros.
 Add `FUJUTSU_WHICH_KEY_TRIGGERS=1` to exercise user-configured r/R triggers too.
-Tests reject warning/error notifications (including notify_once), not just
-failed commands. No production code depends on which-key.
+Tests reject warning/error notifications (including notify_once) and echoed
+errors, not just failed commands. No production code depends on which-key.
 
 Tests create and remove temporary jj repositories; no plugin test dependencies
 are needed. To exercise parent navigation with Oil's actual directory handler,
