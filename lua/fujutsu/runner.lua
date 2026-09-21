@@ -141,9 +141,9 @@ rm -f "$dir/done" "$dir/request"
     end)
     if not ok then diagnostics.error(err, root) end
     local cmd = verb(args) or 'command'
-    diagnostics.record(root, { command = 'jj ' .. table.concat(args, ' '), code = result.code,
-      stdout = result.stdout, stderr = result.stderr, cancelled = job.cancelled })
-    if not opts.quiet then
+    if result.code ~= 0 and not job.cancelled then
+      diagnostics.failure(result, cmd)
+    elseif not opts.quiet then
       local message, level = diagnostics.summary(cmd, result, job.cancelled)
       diagnostics.notice(message, level)
     end

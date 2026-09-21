@@ -109,4 +109,11 @@ local file_name = uri.name(root, 'file', string.rep('a', 40), 'a?x#y%20.txt')
 assert(uri.parse(file_name).path == 'a?x#y%20.txt' and uri.parse(file_name).root == root)
 assert(uri.parse(uri.name(root, 'tree', string.rep('a', 40), 'sub/log/')).kind == 'tree')
 print('PASS: command-line queries, validation retry, buffer identity, scoped marks, defaults and readable URIs')
+-- Retire view callbacks before removing their workspace; queued register
+-- refreshes must not race fixture teardown.
+for _, view in ipairs(vim.api.nvim_list_bufs()) do
+  if vim.api.nvim_buf_is_valid(view) and vim.b[view].fujutsu_log then
+    vim.api.nvim_buf_delete(view, { force = true })
+  end
+end
 vim.cmd.cd('/'); vim.fn.delete(tmp, 'rf'); vim.cmd.qa({ bang = true })

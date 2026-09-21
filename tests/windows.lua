@@ -64,12 +64,10 @@ local function test()
   vim.o.hidden = false
   vim.api.nvim_buf_set_lines(0, 0, -1, false, { 'unsaved editor' })
   local edited = vim.api.nvim_get_current_buf()
-  local notify, messages = vim.notify, {}
-  vim.notify = function(message) messages[#messages + 1] = tostring(message) end
+  vim.cmd('messages clear')
   select('beta.lua'); mapped('<CR>')
-  vim.notify = notify
   eq(2, count()); eq(logwin, vim.api.nvim_get_current_win()); eq(true, vim.bo[edited].modified)
-  contains(table.concat(messages), 'E37')
+  contains(vim.api.nvim_exec2('messages', { output = true }).output, 'E37')
   vim.bo[edited].modified = false
   vim.cmd('Jedit beta.lua'); eq(editor, vim.api.nvim_get_current_win()); eq(2, count())
   print('PASS: one fallback split, protected windows, modified-buffer refusal, and Jedit from logs')

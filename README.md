@@ -110,15 +110,15 @@ are comments in the editor. Each concurrent process owns its editor and cleanup.
 Save modified workspace buffers before commands that can rewrite working-copy
 files; read-only inspection remains available with unsaved buffers or editors.
 
-Operations report a single-line summary of native results (revision identity,
-working-copy movement, rebases or undo), with warnings/errors taking precedence.
-Extraction summaries identify the actual command: `jj split` or `jj squash`.
-Diagnostics retain the complete command and output.
-Lua source locations are omitted from notifications but retained in diagnostics.
-`:checkhealth jj` shows bounded recent
-command diagnostics grouped by workspace path (30 commands, up to 32 KiB per
-output stream). This is diagnostic output, not a second operation history;
-repository history and undo remain jj's responsibility.
+Successful operations report a single-line summary of native results (revision
+identity, working-copy movement, rebases or undo), prioritizing warnings when
+present. Extraction summaries identify the actual command: `jj split` or `jj squash`.
+Failures report the full native error, including causes and hints, in `:messages`;
+they are not shortened to fit the command line or sent through a notification
+provider. Lua validation errors omit the plugin source-location prefix.
+`:checkhealth jj` checks setup only; Fujutsu keeps no separate command/output
+archive. Repository history and undo remain jj's responsibility. A future history
+view will build on native `jj op log`, not a plugin-owned execution log.
 
 ## Squash and extraction
 

@@ -64,10 +64,17 @@ assert(vim.wait(10000, function() return third.result ~= nil end, 20))
 assert(third.cancelled and third.result.code ~= 0 and not fourth.result)
 accept(fourth, 'child accepted independently')
 assert(jj({ 'log', '--no-graph', '-r', 'base', '-T', 'description' }) == 'base updated')
-local history = require('fujutsu.diagnostics').workspaces[vim.uv.fs_realpath(dir)]
-assert(#history >= 5)
-for _, item in ipairs(history) do assert(not item.stderr:find('\27', 1, true)) end
+-- A real native failure retains its full cause/position/hint, even with quiet
+-- success reporting and without relying on the notification provider.
+local failed = runner.run(dir, { 'log', '-r', 'invalid(' }, { quiet = true })
+assert(vim.wait(10000, function() return failed.result ~= nil end, 20))
+assert(failed.result.code ~= 0)
+local messages = vim.api.nvim_exec2('messages', { output = true }).output
+assert(messages:find(vim.trim(require('fujutsu.diagnostics').plain(failed.result.stderr)), 1, true), messages)
+assert(not messages:find('checkhealth', 1, true))
 vim.cmd('checkhealth jj')
-assert(table.concat(vim.api.nvim_buf_get_lines(0, 0, -1, false), '\n'):find(vim.uv.fs_realpath(dir), 1, true))
-print('PASS: simultaneous editors, external operations, independent cancellation, :wq and workspace diagnostics')
+local health = table.concat(vim.api.nvim_buf_get_lines(0, 0, -1, false), '\n')
+assert(health:find('Fujutsu / jj', 1, true))
+assert(not health:find(vim.uv.fs_realpath(dir), 1, true) and not health:find('invalid(', 1, true))
+print('PASS: simultaneous editors, external operations, independent cancellation, :wq, full native failures and setup-only health')
 vim.cmd.cd('/'); vim.fn.delete(dir, 'rf'); vim.cmd.qa({ bang = true })

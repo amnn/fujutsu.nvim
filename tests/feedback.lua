@@ -81,8 +81,9 @@ eq('main | side', vim.fn.getreg('b')); eq(nil, log.marks.b)
 local notices, notify = {}, vim.notify
 vim.notify = function(text, level) notices[#notices + 1] = { text, level } end
 focus('main'); keys('"bRro')
-assert(notices[#notices][1]:find('not a valid revision mark', 1, true))
-assert(not notices[#notices][1]:find('.lua:', 1, true))
+local errors = vim.api.nvim_exec2('messages', { output = true }).output
+assert(errors:find('not a valid revision mark', 1, true))
+assert(not errors:find('actions.lua:', 1, true))
 eq(op, jj({ 'op', 'log', '--no-graph', '-n', '1', '-T', 'id' }))
 print('PASS: weak-link mapping sequence, native register edits and partial-scope rejection without mutation')
 
@@ -133,10 +134,9 @@ local job = require('fujutsu.runner').run(dir, { 'status' })
 assert(vim.wait(10000, function() return job.result ~= nil end, 20)); eq(0, job.result.code)
 local ok, err = pcall(require('fujutsu.runner').run, dir, { 'new' }); eq(false, ok)
 diagnostics.error(err, dir)
-assert(notices[#notices][1]:find('Save or discard', 1, true) and not notices[#notices][1]:find('.lua:', 1, true))
-local history = diagnostics.workspaces[vim.uv.fs_realpath(dir)]
-assert(history[#history].stderr:find('runner.lua:', 1, true))
+errors = vim.api.nvim_exec2('messages', { output = true }).output
+assert(errors:find('Save or discard', 1, true) and not errors:find('runner.lua:', 1, true))
 vim.bo[dirty].modified = false
 vim.notify = notify
-print('PASS: read-only status with unsaved edits; clean guard error with full health details')
+print('PASS: read-only status with unsaved edits; clean guard error in message history')
 vim.cmd.cd('/'); vim.fn.delete(dir, 'rf'); vim.cmd.qa({ bang = true })

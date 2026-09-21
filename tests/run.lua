@@ -381,14 +381,11 @@ local function tests()
   assert(find('+updated contents'), ':e! preserves revision and file expansion choices')
   print('PASS: :e and :e! reload the same log with preserved expansion state and highlights')
   run({ 'jj', 'config', 'set', '--repo', 'templates.log', 'invalid_template(' }, paths_repo)
-  local reload_errors, notify_reload = {}, vim.notify
-  vim.notify = function(message, level)
-    reload_errors[#reload_errors + 1] = { message, level }
-  end
+  vim.cmd('messages clear')
   vim.cmd.edit()
-  vim.notify = notify_reload
-  eq(1, #reload_errors)
-  eq(vim.log.levels.ERROR, reload_errors[1][2])
+  local reload_error = vim.api.nvim_exec2('messages', { output = true }).output
+  assert(reload_error:find('Failed to parse template', 1, true))
+  assert(reload_error:find('Caused by:', 1, true))
   eq(false, vim.bo.modifiable)
   eq(false, vim.bo.modified)
   run({ 'jj', 'config', 'unset', '--repo', 'templates.log' }, paths_repo)
@@ -426,14 +423,11 @@ local function tests()
   vim.api.nvim_buf_set_lines(0, 0, -1, false, { 'retry automatic refresh' })
   vim.cmd.write()
   run({ 'jj', 'config', 'set', '--repo', 'templates.log', 'invalid_template(' }, paths_repo)
-  reload_errors = {}
-  vim.notify = function(message, level)
-    reload_errors[#reload_errors + 1] = { message, level }
-  end
+  vim.cmd('messages clear')
   vim.api.nvim_set_current_win(reload_win)
-  vim.notify = notify_reload
-  eq(1, #reload_errors)
-  eq(vim.log.levels.ERROR, reload_errors[1][2])
+  reload_error = vim.api.nvim_exec2('messages', { output = true }).output
+  assert(reload_error:find('Failed to parse template', 1, true))
+  assert(reload_error:find('Caused by:', 1, true))
   run({ 'jj', 'config', 'unset', '--repo', 'templates.log' }, paths_repo)
   vim.api.nvim_set_current_win(file_win)
   vim.api.nvim_set_current_win(reload_win)
@@ -496,12 +490,9 @@ local function tests()
 
   vim.cmd.tabnew()
   vim.cmd.cd(vim.fn.fnameescape(tmp))
-  local notifications = {}
-  local notify = vim.notify
-  vim.notify = function(message) notifications[#notifications + 1] = message end
+  vim.cmd('messages clear')
   vim.cmd.J()
-  vim.notify = notify
-  eq(1, #notifications)
+  assert(vim.api.nvim_exec2('messages', { output = true }).output:find('Error:', 1, true))
   eq(1, #vim.api.nvim_tabpage_list_wins(0))
   print('PASS: outside a repository reports an error without creating a split')
 end
