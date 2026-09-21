@@ -3,6 +3,18 @@
 - [x] `:e` should refresh the buffer.
 - [x] Refresh stale logs on entry after workspace files are saved, similar to Fugitive.
 
+## Help and discoverability
+
+- [ ] Add proper Vim help documentation with tags for commands and mapping
+  families. Add buffer-local help bindings such as `r?` to jump directly to
+  the rebase section, following Fugitive's command-family help convention.
+- [ ] Replace operator-pending rebase discovery with placement-only menus after
+  `rb`/`rs`/`rr` and uppercase equivalents. Blocked on safe register-picker
+  interaction: which-key can remove the prefix guards while replaying a quoted
+  Visual-mode prefix, allowing a timed-out `V"ars` to fall through to squash.
+  Cover that case before replacing the current dispatcher; a visible popup
+  alone is not sufficient validation.
+
 ## File navigation and revision editing
 
 Implement in the following commit-sized stages. Command names describe editor
