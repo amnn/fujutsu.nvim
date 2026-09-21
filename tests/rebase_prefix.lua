@@ -11,28 +11,42 @@ local function lua(code, ...) return vim.rpcrequest(child, 'nvim_exec_lua', code
 local function input(text) vim.rpcrequest(child, 'nvim_input', text) end
 local wk = vim.env.FUJUTSU_WHICH_KEY
 lua([=[
-  local repo, runtime, wk = ...
+  local repo, runtime, wk, triggers = ...
+  if wk == vim.NIL then wk = nil end
   vim.opt.runtimepath:prepend(runtime)
   vim.o.timeoutlen = 120
   notices = {}; vim.notify = function(text, level) notices[#notices + 1] = { text, level } end
+  vim.notify_once = vim.notify
+  wk_load_attempts = 0
   if wk then
     vim.opt.runtimepath:prepend(wk)
-    require('which-key').setup({ delay = 10 })
+    local opts = { delay = 10 }
+    if triggers then opts.triggers = { { '<auto>', mode = 'nxso' }, { 'r', mode = {'n', 'x'} }, { 'R', mode = {'n', 'x'} } } end
+    require('which-key').setup(opts)
+  else
+    package.preload['which-key'] = function()
+      wk_load_attempts = wk_load_attempts + 1
+      error('Fujutsu must not load which-key')
+    end
   end
   vim.cmd.runtime('plugin/fujutsu.lua'); vim.cmd.cd(repo); vim.cmd("J log -r 'all()'")
   local runner = require('fujutsu.runner'); local run = runner.run
   runner.run = function(...) last_job = run(...); return last_job end
   function prepare(upper)
-    last_job = nil; vim.v.errmsg = ''
+    last_job = nil; vim.v.errmsg = ''; notices = {}
     local log = require('fujutsu').log(); log.refresh(vim.api.nvim_get_current_buf())
     log.focus(require('fujutsu.file').resolve(repo, upper and 'destination' or 'source'))
     vim.fn.setreg('a', upper and 'source' or 'destination')
     vim.fn.setreg('"', 'not-a-revision') -- Losing the explicit register must fail.
   end
-]=], dir, vim.fn.getcwd(), wk)
+]=], dir, vim.fn.getcwd(), wk, vim.env.FUJUTSU_WHICH_KEY_TRIGGERS ~= nil)
 local function pause() vim.wait(450, function() return false end, 10) end
 local function no_error()
   assert(lua('return vim.v.errmsg') == '', lua('return vim.v.errmsg'))
+  assert(lua('return wk_load_attempts') == 0, 'Fujutsu must not probe/load which-key')
+  for _, notice in ipairs(lua('return notices')) do
+    assert(not notice[2] or notice[2] < vim.log.levels.WARN, vim.inspect(notice))
+  end
 end
 local function test()
   -- Real command-line input, including retry defaults and Escape semantics.
@@ -56,12 +70,13 @@ local function test()
     local visual = sequence:sub(1, 1) == 'V'
     local prefix = visual and sequence:sub(2) or sequence
     lua('prepare(...)', prefix:sub(1, 1) == 'R')
-    input((visual and 'V' or '') .. '"a' .. prefix); pause(); no_error()
-    if wk then
-      assert(lua('return require("which-key.state").state ~= nil'), 'Prefix must open which-key')
-    else
-      assert(lua('return vim.fn.mode()') == (visual and 'V' or 'n'), 'Prefix must not enter Replace/Insert mode')
+    input((visual and 'V' or '') .. '"a' .. prefix); pause()
+    if not wk then
+      local mode = vim.rpcrequest(child, 'nvim_get_mode') -- fast API, safe during pending input
+      assert(mode.mode == (visual and 'V' or 'n') and not mode.blocking,
+        'Timed-out prefixes must cancel without entering native replace commands')
     end
+    -- Do not issue blocking exec_lua RPCs inside a UI-owned getchar loop.
     input('<Esc>'); pause(); no_error()
     if wk then assert(lua('return require("which-key.state").state == nil')) end
     assert(jj({ 'op', 'log', '--no-graph', '-n', '1', '-T', 'id' }) == baseline)
@@ -72,11 +87,11 @@ local function test()
     local upper = prefix:sub(1, 1) == 'R'
     lua('prepare(...)', upper)
     local start = (visual and 'V' or '') .. '"a' .. prefix
-    if wk then input(start); pause(); no_error(); input(#prefix == 1 and 'ro' or 'o')
-    else input(start .. (#prefix == 1 and 'ro' or 'o')) end
+    input(start .. (#prefix == 1 and 'ro' or 'o'))
     assert(vim.wait(10000, function() return lua('return last_job ~= nil and last_job.result ~= nil') end, 20),
       vim.inspect(lua('return notices')))
     assert(lua('return last_job.result.code') == 0, vim.inspect(lua('return last_job.result')))
+    no_error()
     assert(jj({ 'log', '--no-graph', '-r', 'parents(source)', '-T', 'commit_id' })
       == jj({ 'log', '--no-graph', '-r', 'destination', '-T', 'commit_id' }))
     jj({ 'op', 'restore', baseline })

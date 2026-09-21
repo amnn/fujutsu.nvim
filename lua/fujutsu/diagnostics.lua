@@ -19,8 +19,8 @@ function M.record(root, item)
 end
 
 -- Summarize native facts, not just exit status. Full streams remain in health.
-function M.summary(command, result, cancelled, label)
-  local title = label or ('jj ' .. command)
+function M.summary(command, result, cancelled)
+  local title = 'jj ' .. command
   if cancelled then return title .. ': cancelled', vim.log.levels.INFO end
   local lines = vim.split(M.plain((result.stderr or '') .. '\n' .. (result.stdout or '')), '\n')
   local facts, seen, rebased, warning, failure, first = {}, {}, {}, nil, nil, nil

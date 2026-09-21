@@ -1,7 +1,12 @@
 vim.opt.runtimepath:prepend(vim.fn.getcwd())
 vim.cmd.runtime('plugin/fujutsu.lua')
 local file, actions, selection = require('fujutsu.file'), require('fujutsu.actions'), require('fujutsu.selection')
-local dirs = {}
+local dirs, notices = {}, {}
+local notify = vim.notify
+vim.notify = function(text, level, opts)
+  notices[#notices + 1] = text
+  notify(text, level, opts)
+end
 local function fixture(extra)
   local dir = vim.fn.tempname(); dirs[#dirs + 1] = dir; vim.fn.mkdir(dir, 'p')
   local function jj(args) return vim.trim(file.jj(dir, args)) end
@@ -22,6 +27,9 @@ local function run(dir, log, buf, selected, expected)
   if job.editor then vim.cmd.write(); vim.cmd.bdelete() end
   assert(vim.wait(10000, function() return job.result ~= nil end, 20))
   assert(job.result.code == 0, job.result.stderr)
+  assert(notices[#notices]:find('jj ' .. expected .. ':', 1, true) == 1, notices[#notices])
+  local history = require('fujutsu.diagnostics').workspaces[vim.uv.fs_realpath(dir)]
+  assert(history[#history].command:find(' ' .. expected .. ' ', 1, true))
   return job
 end
 for _, case in ipairs({ 'whole', 'file-all', 'file-part', 'hunk', 'all-lines' }) do

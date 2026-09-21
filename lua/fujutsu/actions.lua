@@ -72,7 +72,7 @@ function M.squash(log, buf, root, selected, key, reg)
     table.insert(args, index + 5, '-m')
     table.insert(args, index + 6, '')
   end
-  local ok, result = pcall(runner.run, root, args, { cleanup = cleanup, label = key == 'x' and 'Extract' or nil })
+  local ok, result = pcall(runner.run, root, args, { cleanup = cleanup })
   if not ok then
     if cleanup then cleanup() end
     error(result, 0)
@@ -139,24 +139,10 @@ function M.attach(log, buf, root)
       end
     end
     for _, prefix in ipairs({ '', 'b', 's', 'r' }) do
-      -- A timed-out prefix must never fall through to native r/R. Let an
-      -- installed which-key display the ordinary mappings; otherwise cancel
-      -- safely. Full sequences do not pass through this fallback.
-      for _, mode in ipairs({ 'n', 'x' }) do
-        vim.keymap.set(mode, key .. prefix, protect(function()
-          local ok, wk = pcall(require, 'which-key')
-          if ok then
-            local reg = vim.v.register
-            wk.show({ keys = key .. prefix, mode = mode })
-            -- which-key replays explicit registers in Normal mode, but not
-            -- Visual mode. Restore ours only when it queued a continuation;
-            -- Escape/Ctrl-C must not leave a pending register prefix behind.
-            if mode == 'x' and reg ~= '"' and vim.fn.getchar(1) == key:byte() then
-              vim.api.nvim_feedkeys('"' .. reg, 'ni', false)
-            end
-          else require('fujutsu.diagnostics').notice('Incomplete rebase cancelled; type the full sequence') end
-        end), { buffer = buf, desc = 'Rebase ' .. (key == 'r' and 'context' or 'register') .. '…' })
-      end
+      -- Ordinary no-op prefixes prevent timeout from invoking native r/R.
+      -- Mapping discovery and popup triggers belong to the user's keymap UI.
+      vim.keymap.set({ 'n', 'x' }, key .. prefix, function() end,
+        { buffer = buf, desc = 'Rebase ' .. (key == 'r' and 'context' or 'register') .. '…' })
       vim.keymap.set({ 'n', 'x' }, key .. prefix .. '<Esc>', '<Esc>',
         { buffer = buf, desc = 'Cancel rebase sequence' })
     end

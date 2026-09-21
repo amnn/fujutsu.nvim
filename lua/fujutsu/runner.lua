@@ -144,7 +144,7 @@ rm -f "$dir/done" "$dir/request"
     diagnostics.record(root, { command = 'jj ' .. table.concat(args, ' '), code = result.code,
       stdout = result.stdout, stderr = result.stderr, cancelled = job.cancelled })
     if not opts.quiet then
-      local message, level = diagnostics.summary(cmd, result, job.cancelled, opts.label)
+      local message, level = diagnostics.summary(cmd, result, job.cancelled)
       diagnostics.notice(message, level)
     end
   end

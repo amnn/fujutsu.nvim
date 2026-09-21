@@ -112,7 +112,8 @@ files; read-only inspection remains available with unsaved buffers or editors.
 
 Operations report a single-line summary of native results (revision identity,
 working-copy movement, rebases or undo), with warnings/errors taking precedence.
-Extraction summaries say `Extract`; diagnostics retain the actual jj command.
+Extraction summaries identify the actual command: `jj split` or `jj squash`.
+Diagnostics retain the complete command and output.
 Lua source locations are omitted from notifications but retained in diagnostics.
 `:checkhealth jj` shows bounded recent
 command diagnostics grouped by workspace path (30 commands, up to 32 KiB per
@@ -182,10 +183,11 @@ only when the unnamed register is not a valid mark; its suggested base is
 `main`, configurable with `jj config set --repo fujutsu.rebase-base NAME`.
 Explicit invalid registers fail rather than falling back or using a subset.
 The complete sequences are normal mappings with descriptions for tools such as
-which-key; the plugin does not present a separate key-sequence dialog. If an
-incomplete prefix times out, installed which-key opens its mapping view; without
-which-key the incomplete sequence safely cancels rather than entering native
-Replace mode. Type the full sequence continuously when not using which-key.
+which-key can list them. Fujutsu does not load or call a keymap UI, replay keys,
+or force a popup when a prefix times out. Ordinary no-op prefix mappings cancel
+incomplete sequences safely rather than entering native Replace mode. Type the
+full sequence within your normal mapping timeout; use your keymap UI to browse
+available commands.
 
 ## Colors
 
@@ -465,8 +467,11 @@ nvim --headless -u NONE -l tests/rebase_prefix.lua
 ```
 
 `tests/rebase_prefix.lua` uses an embedded Neovim to test real input pauses.
-Set `FUJUTSU_WHICH_KEY=/path/to/which-key.nvim` to also test popup continuation,
-Escape and explicit register preservation against the installed plugin.
+Set `FUJUTSU_WHICH_KEY=/path/to/which-key.nvim` to test coexistence with the
+installed plugin, including repeated prefixes, Escape and explicit registers.
+Add `FUJUTSU_WHICH_KEY_TRIGGERS=1` to exercise user-configured r/R triggers too.
+Tests reject warning/error notifications (including notify_once), not just
+failed commands. No production code depends on which-key.
 
 Tests create and remove temporary jj repositories; no plugin test dependencies
 are needed. To exercise parent navigation with Oil's actual directory handler,

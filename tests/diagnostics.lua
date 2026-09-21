@@ -12,8 +12,8 @@ for _, native in ipairs({ 'Error: Failed to parse revset: Syntax error', 'Error:
   d.error('\27[31m' .. native .. '\27[0m', root)
   assert(messages[#messages][1] == native .. ' (:checkhealth jj)')
 end
-local function summary(command, output, expected, code, level, label)
-  local text, severity = d.summary(command, { stderr = output, code = code or 0 }, false, label)
+local function summary(command, output, expected, code, level)
+  local text, severity = d.summary(command, { stderr = output, code = code or 0 }, false)
   assert(text == expected, text)
   assert(severity == (level or vim.log.levels.INFO))
 end
@@ -26,8 +26,8 @@ summary('rebase', 'Rebased 2 commits onto destination\nWorking copy  (@) now at:
 summary('undo', 'Undid operation: abcd12345678 (date) old operation\nRestored to operation: 999999\n', 'jj undo: undid abcd12345678')
 summary('redo', 'Redid operation: abcd12345678 (date) old operation\n', 'jj redo: redid abcd12345678')
 summary('split', 'Selected changes : selected 01234567 title\nRemaining changes: remaining 76543210 title\n',
-  'Extract: extracted selected; remaining remaining', nil, nil, 'Extract')
-summary('squash', 'Created new commit selected 01234567 title\n', 'Extract: created selected', nil, nil, 'Extract')
+  'jj split: extracted selected; remaining remaining')
+summary('squash', 'Created new commit selected 01234567 title\n', 'jj squash: created selected')
 summary('rebase', 'Working copy  (@) now at: source 01234567 title\nWarning: unresolved conflicts\n',
   'jj rebase: Warning: unresolved conflicts (:checkhealth jj)', nil, vim.log.levels.WARN)
 summary('rebase', 'There are new conflicts in these commits:\n',
@@ -44,5 +44,5 @@ assert(not line:find('[\r\n]') and vim.fn.strdisplaywidth(line) <= 53)
 assert(line:find('… (:checkhealth jj)', 1, true), line)
 for i = 1, 40 do d.record(root, { stderr = string.rep('x', 40000), command = tostring(i) }) end
 assert(#d.workspaces[root] == 30 and #d.workspaces[root][1].stderr < 33000)
-print('PASS: clean Lua/native errors, action-aware native summaries, warning/error precedence, width and bounded full diagnostics')
+print('PASS: clean Lua/native errors, actual jj command summaries, warning/error precedence, width and bounded full diagnostics')
 vim.cmd.qa({ bang = true })
