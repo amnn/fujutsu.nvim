@@ -170,6 +170,20 @@ local function test()
   lua('prepare(true)'); input('@m'); pause()
   assert(vim.wait(10000, function() return lua('return last_job ~= nil and last_job.result ~= nil') end, 20))
   assert(lua('return last_job.result.code == 0 and restored()')); no_error()
+  -- A register-prefixed Visual squash is a complete single-key action, not
+  -- an incomplete rebase prefix. Exercise the actual operation through the UI.
+  lua('prepare(false)'); input('V'); pause(); input('"'); pause(); input('a'); pause(); input('s'); pause()
+  assert(vim.wait(10000, function() return lua('return last_job ~= nil and (last_job.editor ~= nil or last_job.result ~= nil)') end, 20))
+  assert(lua('return last_job.editor ~= nil'), vim.inspect(lua('return notices')))
+  lua([=[
+    vim.api.nvim_buf_set_lines(last_job.editor, 0, -1, false, {'combined description'})
+    vim.api.nvim_buf_call(last_job.editor, function() vim.cmd.write() end)
+    vim.api.nvim_buf_delete(last_job.editor, {})
+  ]=])
+  assert(vim.wait(10000, function() return lua('return last_job.result ~= nil') end, 20))
+  assert(lua('return last_job.result.code == 0 and restored()')); no_error()
+  assert(jj({ 'file', 'show', '-r', 'destination', 'source' }) == 'source')
+  print('PASS: real Visual "as preserves the registered destination with a paused register picker')
 end
 local ok, err = xpcall(test, debug.traceback)
 vim.fn.jobstop(child); vim.fn.delete(dir, 'rf')

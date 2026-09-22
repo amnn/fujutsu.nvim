@@ -122,14 +122,18 @@ view will build on native `jj op log`, not a plugin-owned execution log.
 
 ## Squash and extraction
 
-`s` squashes contextual changes into their parent. `S` squashes the unnamed
-mark into the contextual commit (`"aS` uses mark `a`). `S` is Normal-mode only:
-a file, hunk, or diff line under the cursor identifies its owning destination
-commit. Fujutsu leaves Visual `S` unmapped, preserving user/plugin bindings.
+Bare `s` squashes contextual changes into their parent. An explicit register
+chooses a different destination: `"as` squashes context into the revision marked
+in `a`, and `V"as` moves only the selected changes there. The parent remains the
+default even when the unnamed register contains a valid mark. Invalid explicit
+marks fail rather than falling back; jj rejects multiple destination revisions.
+`S` squashes the unnamed mark into the contextual commit (`"aS` uses mark `a`).
+`S` is Normal-mode only: a file, hunk, or diff line under the cursor identifies
+its owning destination commit. Fujutsu leaves Visual `S` unmapped, preserving
+user/plugin bindings.
 `x` extracts contextual changes into a new commit inserted immediately before
-their source. `X` is
-unassigned. Parent ambiguity and invalid multi-source combinations follow jj's
-errors, not a plugin-selected first parent.
+their source. `X` is unassigned. Parent ambiguity and invalid multi-source
+combinations follow jj's errors, not a plugin-selected first parent.
 
 For lowercase actions, a file row selects the entire file; a hunk header or
 diff line selects its hunk. Visual selection within one diff selects changed
@@ -462,6 +466,7 @@ nvim --headless -u NONE -l tests/marks.lua
 nvim --headless -u NONE -l tests/log_actions.lua
 nvim --headless -u NONE -l tests/rebase.lua
 nvim --headless -u NONE -l tests/squash.lua
+nvim --headless -u NONE -l tests/squash_register.lua
 nvim --headless -u NONE -l tests/patch.lua
 nvim --headless -u NONE -l tests/create.lua
 nvim --headless -u NONE -l tests/concurrency.lua

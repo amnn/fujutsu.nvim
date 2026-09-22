@@ -55,6 +55,10 @@ function M.squash(log, buf, root, selected, key, reg)
     vim.list_extend(args, { '--from', table.concat(sources, ' | '), '--into', table.concat(contextual, ' | ') })
   elseif key == 'x' then
     vim.list_extend(args, { '--from', table.concat(contextual, ' | '), '--insert-before', table.concat(contextual, ' | ') })
+  elseif reg and reg ~= '"' then
+    local destinations = marks.resolve(reg, log.catalog, root, file.jj)
+    assert(destinations, 'Register ' .. reg .. ' is not a valid revision mark')
+    vim.list_extend(args, { '--from', table.concat(contextual, ' | '), '--into', table.concat(destinations, ' | ') })
   else
     vim.list_extend(args, { '-r', table.concat(contextual, ' | ') })
   end
