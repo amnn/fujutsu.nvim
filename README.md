@@ -505,3 +505,8 @@ For real lualine integration, run `tests/status.lua` with
 ## License
 
 [Apache License 2.0](LICENSE).
+
+## AI disclosure
+
+This codebase is currently **100% slop**—developed using AI coding agents.
+Treat it as experimental and review it before relying on it.
