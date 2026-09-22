@@ -76,8 +76,20 @@ assert(vim.wait(10000, function() return job.result ~= nil end, 20))
 assert(job.result.code == 0, job.result.stderr)
 assert(id('parents(@)') == id('B'))
 print('PASS: R Enter, explicit lowercase register destination and Escape grammar mappings')
--- Exercise operator dispatch independently of jj: every specification, true
--- multiline Visual ranges, EOF cursor positions, and restoration on failure.
+-- Reclaim multi-source selection by marking in Visual mode, then using R.
+jj({ 'new', 'root()', '-m', 'visual source a' }); jj({ 'bookmark', 'create', 'visual-a' })
+jj({ 'new', '-m', 'visual source b' }); jj({ 'bookmark', 'create', 'visual-b' })
+log.refresh(buf); focus('visual-b'); keys('V'); focus('visual-a'); keys('"am')
+local registered = marks.resolve('a', log.catalog, dir, require('fujutsu.file').jj)
+assert(#registered == 2, 'Visual marking must select both source revisions')
+focus('D'); keys('Rro')
+job = assert(require('fujutsu.runner').latest(root))
+assert(vim.wait(10000, function() return job.result ~= nil end, 20))
+assert(job.result.code == 0, job.result.stderr)
+assert(id('parents(visual-a)') == id('D'))
+assert(id('parents(visual-b)') == id('visual-a'))
+print('PASS: Visual mark followed by Normal R rebases the selected revision set')
+-- Exercise compound mappings independently of jj, without borrowing operators.
 vim.cmd.tabnew()
 local fixture = vim.api.nvim_get_current_buf()
 vim.api.nvim_buf_set_lines(fixture, 0, -1, false, { 'one', 'two', 'three' })
@@ -92,34 +104,40 @@ local function capture_run(_, _, _, selected, upper, reg, source, place)
   assert(vim.go.operatorfunc == previous_operator)
   assert(vim.deep_equal(previous_map, vim.fn.maparg('bo', 'o', false, true)))
   captured = { selected, upper, reg, source, place }
-  if fail then error('Expected operator failure') end
+  if fail then error('Expected rebase failure') end
+end
+local visual_calls = 0
+for _, key in ipairs({ 'r', 'R' }) do
+  vim.keymap.set('x', key, function()
+    visual_calls = visual_calls + 1
+    vim.cmd.normal({ args = { '\27' }, bang = true })
+  end, { desc = 'User Visual mapping' })
 end
 require('fujutsu.rebase').attach(snapshot, fixture, '/unused', capture_run)
-for _, visual in ipairs({ false, true }) do
-  for _, prefix in ipairs({ 'r', 'R' }) do
-    for _, source in ipairs({ 'b', 's', 'r' }) do
-      for _, place in ipairs({ 'o', 'A', 'B' }) do
-        captured = nil; vim.api.nvim_win_set_cursor(0, { 1, 0 })
-        keys((visual and 'Vjj' or '') .. '"a' .. prefix .. source .. place)
-        assert(captured and captured[2] == (prefix == 'R') and captured[3] == 'a')
-        assert(captured[4] == source and captured[5] == place)
-        assert(captured[1].first == 1 and captured[1].last == (visual and 3 or 1))
-        assert(#require('fujutsu.selection').entries(captured[1]) == (visual and 3 or 1))
-      end
+local quote = vim.fn.maparg('"', 'n', false, true)
+assert(quote.buffer == 1 and quote.noremap == 1 and quote.rhs == '"')
+assert(vim.fn.maparg('"', 'x') == '', 'Leave Visual register handling alone')
+assert(#vim.api.nvim_buf_get_keymap(fixture, 'x') == 0, 'No Visual rebase mappings')
+keys('Vr'); keys('VR'); assert(visual_calls == 2 and captured == nil)
+for _, prefix in ipairs({ 'r', 'R' }) do
+  for _, source in ipairs({ 'b', 's', 'r' }) do
+    for _, place in ipairs({ 'o', 'A', 'B', '<CR>' }) do
+      captured = nil; vim.api.nvim_win_set_cursor(0, { 1, 0 })
+      keys('"a' .. prefix .. source .. place)
+      assert(captured and captured[2] == (prefix == 'R') and captured[3] == 'a')
+      assert(captured[4] == source and captured[5] == (place == '<CR>' and 'o' or place))
+      assert(captured[1].first == 1 and captured[1].last == 1 and not captured[1].visual)
     end
   end
 end
 captured = nil; vim.api.nvim_win_set_cursor(0, { 3, 4 })
-require('fujutsu.rebase').start(snapshot, fixture, '/unused', capture_run, true, false)
-keys('ro'); assert(captured and captured[1].first == 3)
-fail = true
-require('fujutsu.rebase').start(snapshot, fixture, '/unused', capture_run, true, false)
-keys('ro')
+keys('"aRro'); assert(captured and captured[1].first == 3)
+fail = true; keys('"aRro')
 assert(vim.go.operatorfunc == previous_operator)
 assert(vim.deep_equal(previous_map, vim.fn.maparg('bo', 'o', false, true)))
-assert(vim.api.nvim_exec2('messages', { output = true }).output:find('Expected operator failure', 1, true))
+assert(vim.api.nvim_exec2('messages', { output = true }).output:find('Expected rebase failure', 1, true))
 assert(table.concat(vim.api.nvim_buf_get_lines(fixture, 0, -1, false), '\n') == 'one\ntwo\nthree')
-print('PASS: every operator specification, multiline Visual capture, EOF and restoration after failure')
+print('PASS: Normal-only compound rebases, user Visual bindings, EOF and unchanged operator state')
 vim.cmd.cd('/')
 vim.fn.delete(dir, 'rf')
 vim.cmd.qa({ bang = true })

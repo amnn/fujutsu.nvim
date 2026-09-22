@@ -11,7 +11,7 @@ local function lua(code, ...) return vim.rpcrequest(child, 'nvim_exec_lua', code
 local function input(text) vim.rpcrequest(child, 'nvim_input', text) end
 local wk = vim.env.FUJUTSU_WHICH_KEY
 lua([=[
-  local repo, runtime, wk, triggers = ...
+  local repo, runtime, wk = ...
   if wk == vim.NIL then wk = nil end
   vim.opt.runtimepath:prepend(runtime)
   vim.o.timeoutlen = 120
@@ -28,11 +28,23 @@ lua([=[
   end
   wk_load_attempts = 0
   popup_count, rebase_popup = 0, false
+  normal_register_popup, visual_register_popup = false, false
   local floating = {}
   local function observe(buf)
-    if floating[buf] and vim.fn.mode(1):sub(1, 2) == 'no' then
+    if floating[buf] then
       local text = table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), '\n')
-      if text:find('Rebase ', 1, true) then rebase_popup = true end
+      local state = package.loaded['which-key.state'] and package.loaded['which-key.state'].state
+      if state and state.node.keys == '"' then
+        if state.mode.mode == 'n' then normal_register_popup = true end
+        if state.mode.mode == 'x' then visual_register_popup = true end
+      end
+      if state and state.node.keys:match('^[rR][bsr]$') and text:find('Rebase ', 1, true) then
+        rebase_popup = true
+        assert(state.mode.mode == 'n' and vim.go.operatorfunc == 'v:lua.original_operator')
+        for _, unrelated in ipairs({ 'Next WORD', 'Start of line', '+inside', '+around', 'working-copy revision' }) do
+          assert(not text:find(unrelated, 1, true), text)
+        end
+      end
     end
   end
   local open_win, set_lines = vim.api.nvim_open_win, vim.api.nvim_buf_set_lines
@@ -48,9 +60,7 @@ lua([=[
   end
   if wk then
     vim.opt.runtimepath:prepend(wk)
-    local opts = { delay = 10 }
-    if triggers then opts.triggers = { { '<auto>', mode = 'nxso' }, { 'r', mode = {'n', 'x'} }, { 'R', mode = {'n', 'x'} } } end
-    require('which-key').setup(opts)
+    require('which-key').setup({ delay = 10 })
   else
     package.preload['which-key'] = function()
       wk_load_attempts = wk_load_attempts + 1
@@ -79,13 +89,17 @@ lua([=[
     vim.fn.setreg('a', upper and 'source' or 'destination')
     vim.fn.setreg('"', 'not-a-revision') -- Losing the explicit register must fail.
   end
-]=], dir, vim.fn.getcwd(), wk, vim.env.FUJUTSU_WHICH_KEY_TRIGGERS == '1')
+]=], dir, vim.fn.getcwd(), wk)
 local function pause() vim.wait(450, function() return false end, 10) end
-local function no_error()
-  assert(lua('return vim.v.errmsg') == '', lua('return vim.v.errmsg'))
+local function type_keys(text)
+  for char in text:gmatch('.') do input(char); vim.wait(20, function() return false end, 5) end
+end
+local function no_error(context)
+  context = context or ''
+  assert(lua('return vim.v.errmsg') == '', context .. ': ' .. lua('return vim.v.errmsg'))
   assert(lua('return wk_load_attempts') == 0, 'Fujutsu must not probe/load which-key')
   for _, notice in ipairs(lua('return notices')) do
-    assert(not notice[2] or notice[2] < vim.log.levels.WARN, vim.inspect(notice))
+    assert(not notice[2] or notice[2] < vim.log.levels.WARN, context .. ': ' .. vim.inspect(notice))
   end
 end
 local function test()
@@ -106,52 +120,57 @@ local function test()
   assert(lua('return require("fujutsu").log().effective_query') == 'all()')
   assert(jj({ 'op', 'log', '--no-graph', '-n', '1', '-T', 'id' }) == baseline)
   print('PASS: real command-line query input, retry, Escape, empty default and unchanged history')
-  for _, sequence in ipairs({ 'R', 'Rb', 'Rs', 'Rr', 'r', 'rb', 'rs', 'rr', 'VR', 'Vr' }) do
-    local visual = sequence:sub(1, 1) == 'V'
-    local prefix = visual and sequence:sub(2) or sequence
-    lua('prepare(...)', prefix:sub(1, 1) == 'R')
-    input((visual and 'V' or '') .. '"a' .. prefix); pause()
-    if not wk then
-      local mode = vim.rpcrequest(child, 'nvim_get_mode') -- fast API, safe during pending input
-      if #prefix == 1 then assert(mode.mode:sub(1, 2) == 'no', 'Rebase must wait as a native operator') end
+  for _, prefix in ipairs({ 'R', 'Rb', 'Rs', 'Rr', 'r', 'rb', 'rs', 'rr' }) do
+    for _, quoted in ipairs({ false, true }) do
+      for _, typed in ipairs({ false, true }) do
+        lua('prepare(...)', prefix:sub(1, 1) == 'R')
+        local sequence = (quoted and '"a' or '') .. prefix
+        if typed then type_keys(sequence) else input(sequence) end
+        pause()
+        assert(vim.rpcrequest(child, 'nvim_get_mode').mode == 'n', 'Do not enter Replace or operator-pending mode')
+        -- Escape before issuing blocking RPCs inside a UI-owned getchar loop.
+        input('<Esc>'); pause(); no_error(sequence)
+        assert(lua('return restored() and last_job == nil'), 'Incomplete prefix must not invoke any mutation: ' .. sequence)
+        if wk then
+          assert(lua('return require("which-key.state").state == nil'))
+          if #prefix == 2 then
+            assert(lua('return popup_count > 0 and rebase_popup'), 'Expected placement-only menu: ' .. sequence)
+          end
+        end
+        assert(jj({ 'op', 'log', '--no-graph', '-n', '1', '-T', 'id' }) == baseline)
+      end
     end
-    -- Do not issue blocking exec_lua RPCs inside a UI-owned getchar loop.
-    input('<Esc>'); pause(); no_error()
-    if wk then
-      assert(lua('return require("which-key.state").state == nil'))
-      if #prefix == 1 then assert(lua('return popup_count > 0 and rebase_popup'), 'which-key must display rebase choices: ' .. sequence) end
-    end
-    assert(lua('return restored()'), 'Cancellation must restore operatorfunc and user mappings')
-    assert(jj({ 'op', 'log', '--no-graph', '-n', '1', '-T', 'id' }) == baseline)
   end
-  for _, sequence in ipairs({ 'R', 'Rb', 'Rs', 'Rr', 'r', 'rb', 'rs', 'rr', 'VR', 'Vr' }) do
-    local visual = sequence:sub(1, 1) == 'V'
-    local prefix = visual and sequence:sub(2) or sequence
-    local upper = prefix:sub(1, 1) == 'R'
-    lua('prepare(...)', upper)
-    if visual then input('V'); pause() end -- Also exercise an already active Visual UI.
-    local start = '"a' .. prefix
-    if wk then
-      input('"a' .. prefix:sub(1, 1)); pause()
-      if #prefix > 1 then input(prefix:sub(2)); pause() end
-      input(#prefix == 1 and 'ro' or 'o')
-    else input(start .. (#prefix == 1 and 'ro' or 'o')) end
+  local function finished(sequence)
     assert(vim.wait(10000, function() return lua('return last_job ~= nil and last_job.result ~= nil') end, 20),
-      sequence .. ': ' .. vim.inspect(lua('return { notices, vim.fn.mode(1), vim.v.errmsg, vim.go.operatorfunc }')))
-    assert(lua('return last_job.result.code') == 0, vim.inspect(lua('return last_job.result')))
-    no_error()
-    assert(lua('return restored()'), 'Completion must restore operatorfunc and user mappings')
-    if wk then assert(lua('return popup_count > 0 and rebase_popup'), 'Continuation must follow a real rebase popup') end
+      sequence .. ': ' .. vim.inspect(lua('return { notices, vim.fn.mode(1), vim.v.errmsg }')))
+    assert(lua('return last_job.result.code == 0 and restored()'), vim.inspect(lua('return last_job.result')))
+    no_error(sequence)
     assert(jj({ 'log', '--no-graph', '-r', 'parents(source)', '-T', 'commit_id' })
       == jj({ 'log', '--no-graph', '-r', 'destination', '-T', 'commit_id' }))
     jj({ 'op', 'restore', baseline })
-    -- restore itself creates an operation: subsequent checks use current head.
     baseline = jj({ 'op', 'log', '--no-graph', '-n', '1', '-T', 'id' })
-    -- jj 0.44 rejects recreating an identical rewritten commit in the same second.
+    -- jj 0.44 rejects recreating an identical rewrite in the same second.
     vim.wait(1100, function() return false end, 20)
   end
-  -- Ctrl-C can dismiss a keymap UI without leaving the native operator;
-  -- Escape then cancels that operator, just as for other Vim operators.
+  for _, prefix in ipairs({ 'Rb', 'Rs', 'Rr', 'rb', 'rs', 'rr' }) do
+    for _, quoted in ipairs({ false, true }) do
+      lua('prepare(...)', prefix:sub(1, 1) == 'R')
+      if not quoted then lua([[vim.fn.setreg('"', vim.fn.getreg('a'))]]) end
+      local sequence = (quoted and '"a' or '') .. prefix
+      if wk then
+        type_keys(sequence); pause(); input('o')
+      else input(sequence .. 'o') end
+      finished(sequence)
+      if wk then assert(lua('return popup_count > 0 and rebase_popup'), 'Continuation must follow the placement menu') end
+    end
+  end
+  -- Complete quoted sequences must also work without waiting for a menu.
+  for _, sequence in ipairs({ '"aRro', '"arro' }) do
+    lua('prepare(...)', sequence:find('R', 1, true) ~= nil)
+    input(sequence); finished(sequence)
+  end
+  -- Cancellation leaves ordinary motions and operators alone.
   for _, ending in ipairs({ '<C-c>', 'w' }) do
     lua('prepare(true)'); input('"aR'); pause(); input(ending); pause()
     if ending == '<C-c>' then input('<Esc>'); pause() end
@@ -162,6 +181,8 @@ local function test()
   assert(lua('return original_calls') == 1, 'Restore the user operator')
   input('yy'); pause()
   assert(lua([=[return vim.fn.getreg('"') == vim.api.nvim_get_current_line() .. '\n']=]), 'Preserve native yanks')
+  input('"ayy'); pause()
+  assert(lua([=[return vim.fn.getreg('a') == vim.api.nvim_get_current_line() .. '\n']=]), 'Preserve named yanks')
   lua('prepare(true)'); input('qm"aRroq'); pause()
   assert(vim.wait(10000, function() return lua('return last_job ~= nil and last_job.result ~= nil') end, 20))
   assert(lua('return last_job.result.code == 0 and restored()'))
@@ -183,10 +204,11 @@ local function test()
   assert(vim.wait(10000, function() return lua('return last_job.result ~= nil') end, 20))
   assert(lua('return last_job.result.code == 0 and restored()')); no_error()
   assert(jj({ 'file', 'show', '-r', 'destination', 'source' }) == 'source')
+  if wk then assert(lua('return visual_register_popup and not normal_register_popup'), 'Only Normal log register prefixes should bypass the picker') end
   print('PASS: real Visual "as preserves the registered destination with a paused register picker')
 end
 local ok, err = xpcall(test, debug.traceback)
 vim.fn.jobstop(child); vim.fn.delete(dir, 'rf')
 assert(ok, err)
-print('PASS: real paused r/R prefixes, cancellation, full sequences and explicit registers' .. (wk and ' with which-key' or ' without which-key'))
+print('PASS: Normal compound rebase menus, safe cancellation, explicit registers and macros' .. (wk and ' with which-key' or ' without which-key'))
 vim.cmd.qa({ bang = true })

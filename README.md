@@ -176,8 +176,8 @@ They do not implicitly move bookmarks.
 
 ## Rebasing from the log
 
-Use `[rR][sbr][oAB]`: lowercase `r` takes its source from context and its
-other operand from a register; uppercase `R` takes registered sources and the
+Use `[rR][sbr][oAB]` in Normal mode: lowercase `r` takes its source from cursor
+context and its other operand from a register; uppercase `R` takes registered sources and the
 contextual destination. The unnamed register is the default; `"aRro` uses `a`.
 Source modes are jj's source-and-descendants (`s`), branch (`b`), and explicit
 revisions (`r`). Placement is onto (`o`), insert-after (`A`), or insert-before
@@ -189,15 +189,25 @@ Escape cancels the pending specification. Lowercase prompts for a destination
 only when the unnamed register is not a valid mark; its suggested base is
 `main`, configurable with `jj config set --repo fujutsu.rebase-base NAME`.
 Explicit invalid registers fail rather than falling back or using a subset.
-`r`/`R` enter Vim's native operator-pending mode, capturing the register and
-context (including the full Visual selection). Described operator-pending
-mappings provide the continuations. Which-key can discover these through its
-normal mode handling; Fujutsu neither loads nor calls it. You can pause after
-`r`/`R`, browse choices, and continue without entering Replace mode. Without a
-keymap UI, type the source/placement pair within your normal mapping timeout.
-Unrelated motions cancel without modifying the log. Temporary mappings and
-`operatorfunc` are restored on completion or cancellation; normal yanks, user
-operators and macros remain intact.
+Rebase has no Visual-mode mappings. To act on several sources, select them in
+Visual mode and mark them with `"am`, then move to the destination and use
+`"aRro`. Bare `Rro` also works while the unnamed mark remains associated with `a`.
+Files, hunks and diff lines under the cursor identify their owning revision.
+
+These are ordinary compound mappings: no operator-pending mode, temporary
+operator mappings, or `operatorfunc` changes. With which-key's default triggers,
+there is no popup for bare `r`/`R`; type `rb`, `rs`, or `rr` (or their uppercase
+equivalents) to discover placement choices. Use default discovery rather than
+manually adding single-letter `r`/`R` triggers. Incomplete prefixes time out to
+no-ops instead of native Replace commands. Without a popup, type the complete
+sequence within your normal mapping timeout; Escape cancels it.
+
+In Normal-mode log buffers, `"` is mapped nonrecursively to itself so Vim reads
+register prefixes natively. This prevents register-picker mappings from removing
+rebase prefix guards. The Normal-mode register-picker popup is therefore not
+used in logs; Visual register handling and other buffers are unchanged. Native
+registers, yanks and macros remain supported, with no which-key calls or custom
+register capture/replay code.
 
 ## Colors
 
@@ -479,9 +489,10 @@ nvim --headless -u NONE -l tests/rebase_prefix.lua
 
 `tests/rebase_prefix.lua` uses an embedded Neovim to test real input pauses.
 Set `FUJUTSU_WHICH_KEY=/path/to/which-key.nvim` to test coexistence with the
-installed plugin, asserting actual rebase popup contents, paused continuations,
-Visual selections, explicit registers, cancellation, state restoration and macros.
-Add `FUJUTSU_WHICH_KEY_TRIGGERS=1` to exercise user-configured r/R triggers too.
+installed plugin's default settings, asserting placement-only menus after the
+source prefix, Normal-mode explicit/unnamed registers, cancellation without any
+mutation, unchanged operator state, native yanks and macros. Visual registered
+squash remains covered separately; rebase itself is Normal-mode only.
 Tests reject warning/error notifications (including notify_once) and echoed
 errors, not just failed commands. No production code depends on which-key.
 
