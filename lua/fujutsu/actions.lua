@@ -114,7 +114,7 @@ function M.attach(log, buf, root)
     end), { buffer = buf, desc = key == 'ge' and 'Edit contextual revision' or 'Insert empty commit' })
   end
   for _, key in ipairs({ 's', 'S', 'x' }) do
-    for _, mode in ipairs({ 'n', 'x' }) do
+    for _, mode in ipairs(key == 'S' and { 'n' } or { 'n', 'x' }) do
       vim.keymap.set(mode, key, protect(function()
         local reg = vim.v.register
         local selected = selection.capture(log, mode == 'x')

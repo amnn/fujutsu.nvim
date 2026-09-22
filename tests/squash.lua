@@ -1,5 +1,10 @@
 vim.opt.runtimepath:prepend(vim.fn.getcwd())
 vim.cmd.runtime('plugin/fujutsu.lua')
+local visual_s = false
+vim.keymap.set('x', 'S', function()
+  visual_s = true
+  vim.cmd.normal({ args = { '\27' }, bang = true })
+end, { desc = 'User Visual S' })
 local dir = vim.fn.tempname()
 vim.fn.mkdir(dir, 'p')
 local function jj(args)
@@ -19,6 +24,21 @@ vim.cmd([[J log -r 'all()']])
 local buf = vim.api.nvim_get_current_buf()
 local log = require('fujutsu').log(buf)
 local actions = require('fujutsu.actions')
+local function keys(text)
+  vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes(text, true, false, true), 'xt', false)
+end
+for _, mapping in ipairs(vim.api.nvim_buf_get_keymap(buf, 'x')) do
+  assert(mapping.lhs ~= 'S', 'Fujutsu must not install a Visual S mapping')
+end
+assert(vim.fn.maparg('S', 'n', false, true).buffer == 1)
+for _, key in ipairs({ 's', 'x' }) do
+  assert(vim.fn.maparg(key, 'x', false, true).buffer == 1, 'Keep partial-patch Visual actions')
+end
+local operation = jj({ 'op', 'log', '--no-graph', '-n', '1', '-T', 'id' })
+keys('VS')
+assert(visual_s, 'Preserve the user Visual S mapping')
+assert(jj({ 'op', 'log', '--no-graph', '-n', '1', '-T', 'id' }) == operation)
+print('PASS: S is Normal-only; user Visual S and partial-patch mappings remain intact')
 local function focus_wc()
   log.refresh(buf)
   for i, row in pairs(log.rows) do
@@ -70,7 +90,8 @@ end
 jj({ 'new', 'root()', '-m', 'target description' })
 vim.api.nvim_set_current_buf(buf); focus_wc()
 require('fujutsu.marks').modify('a', 'replace', sources, log.catalog)
-job = actions.squash(log, buf, dir, require('fujutsu.selection').capture(log, false), 'S', 'a')
+keys('"aS')
+job = assert(require('fujutsu.runner').latest(vim.uv.fs_realpath(dir)), 'Normal S must start squash')
 assert(vim.wait(10000, function() return job.editor ~= nil end, 20))
 content = table.concat(vim.api.nvim_buf_get_lines(job.editor, 0, -1, false), '\n')
 for _, word in ipairs({ 'one description', 'two description', 'target description' }) do

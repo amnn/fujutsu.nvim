@@ -123,8 +123,11 @@ view will build on native `jj op log`, not a plugin-owned execution log.
 ## Squash and extraction
 
 `s` squashes contextual changes into their parent. `S` squashes the unnamed
-mark into the contextual commit (`"aS` uses mark `a`). `x` extracts contextual
-changes into a new commit inserted immediately before their source. `X` is
+mark into the contextual commit (`"aS` uses mark `a`). `S` is Normal-mode only:
+a file, hunk, or diff line under the cursor identifies its owning destination
+commit. Fujutsu leaves Visual `S` unmapped, preserving user/plugin bindings.
+`x` extracts contextual changes into a new commit inserted immediately before
+their source. `X` is
 unassigned. Parent ambiguity and invalid multi-source combinations follow jj's
 errors, not a plugin-selected first parent.
 
